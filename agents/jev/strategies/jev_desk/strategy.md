@@ -12,6 +12,18 @@ skills: []
 default_config:
   frequency_sec: 300
   execution_mode: loop
+  # RUN MODE — test | prod. Profiles live in agents/jev/routines/_jev_math.py
+  # (MODE_PROFILES); the $JEV_MODE env var selects one at process level, and that
+  # is the switch that drives the routine defaults and the dashboard. The book,
+  # the slot budget and the per-position floor move TOGETHER:
+  #
+  #   test — 100 USDC / 2 slots / 12.0 floor   organizers + constrained testing
+  #   prod — 800 USDC / 5 slots / 100.0 floor  the 48-hour competition envelope
+  #
+  # The values below are the TEST set, and they are what the Start dialog seeds.
+  # To run prod: export JEV_MODE=prod AND set total_amount_quote: 800,
+  # max_open_executors: 5, min_position_usd: 100.0, portfolio_pct_max: 0.20.
+  mode: test
   total_amount_quote: 100
   quote_asset: USDC
   # Pinned so the dashboard's Start dialog seeds the right server. Left blank it
@@ -34,7 +46,8 @@ default_config:
   trust_noul_floor: 0.30
   select_conf_floor: 0.55
   worth_margin: 1.2
-  # Portfolio / discovery.
+  # Portfolio / discovery. These track the run mode above — test: 2 slots /
+  # 12.0 floor / 0.50 cap; prod: 5 slots / 100.0 floor / 0.20 cap.
   max_open_executors: 2
   min_position_usd: 12.0
   max_new_slots: 2

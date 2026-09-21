@@ -62,11 +62,11 @@ def test_pool_usd_input_is_ignored_and_leaves_amount_zero():
 
 
 def test_pool_pct_drives_the_amount():
-    """pool_pct IS the input: 0.31 of a $100 book -> $31."""
+    """pool_pct IS the input: the slice is pool_pct x book, whatever the mode."""
     cfg = gate.Config(pool_state="NONE", pool_pct=0.31, price=0.16)
     out = asyncio.run(gate.run(cfg, None))
     assert "model_pct=0.310" in out
-    assert "pool_usd=$31.00" in out
+    assert f"pool_usd=${cfg.wallet_usd * 0.31:.2f}" in out
 
 
 def test_verb_passed_as_pool_state_is_refused_loudly():

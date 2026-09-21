@@ -18,7 +18,7 @@ decide — then executes one-sided liquidity walls it can defend.
   `Noul` question per candidate in a single System One call.
 - **Size** % of book + width; **cost tier** (fee ≥ 1.2× open cost = full slice,
   trimmed down to 0.5×, below that no slice).
-- **Act** WAIT / SHIFT / REBUILD / SIT per pool (Ready / Move / Stay out in plain talk).
+- **Gate** WAIT / SHIFT / REBUILD / SIT per pool (Ready / Move / Stay out in plain talk).
 
 The model proposes (a `Noul` fan-out for selection + a `Score` for size). The
 math disposes (rug card, bins, worth, dry-run). Every verdict carries the
@@ -39,6 +39,28 @@ YOU             → SELECT / SIZE / WAIT / SHIFT / SIT / LEARN, then journal
 
 TypeSafe System One via `jev-latest`. With no API key (or no SDK), pure math
 keeps the desk running — the model is an advisor, never a hard requirement.
+
+## Run modes
+
+Two profiles, selected by `$JEV_MODE` — read at import, so it drives the routine
+defaults *and* the dashboard:
+
+| Mode | Book | Slots | Min slice | Per-pool cap | Use |
+|---|---|---|---|---|---|
+| `test` *(default)* | 100 USDC | 2 | 12.0 | 0.50 | organizers, constrained testing |
+| `prod` | 800 USDC | 5 | 100.0 | 0.20 | the 48-hour competition envelope |
+
+```bash
+JEV_MODE=prod python dashboard/live_bridge.py 8099   # competition envelope
+```
+
+The book, the slot budget and the per-position floor move **together** on
+purpose: a 2-slot budget on an 800 USDC book would open $400 walls, and a 5-slot
+budget on a 100 USDC book would open dust under the fee-vs-cost floor. An
+unrecognised name falls back to `test` rather than raising, so a typo cannot take
+the desk down mid-run. Profiles live in `MODE_PROFILES` in
+`agents/jev/routines/_jev_math.py`; `mode_profile()` resolves one, and
+`strategy.md`'s `mode` key records which profile the desk is seeded with.
 
 ## Run the tests
 

@@ -17,7 +17,16 @@ from _jev_math import (  # noqa: E402
     MAJOR_PCT_MIN, MAJOR_PCT_MAX, MINOR_PCT_MAX, TRUST_NOUL_FLOOR,
     MAX_WIDTH_PCT, MARGINAL_SCALE, WORTH_MARGIN, WORTH_MARGIN_FLOOR,
     RACE_USD, MIN_POSITION_USD, MAX_POSITIONS, PORTFOLIO_PCT_MAX,
+    MODE, MODE_IS_KNOWN, MODE_LABEL, MODE_PROFILES, MODE_TEST, MODE_PROD,
+    DEFAULT_MODE, mode_profile, is_known_mode,
 )
+
+# The TEST profile's envelope, pinned. The sizing tests assert specific worth
+# tiers, and a tier is a property of a (book, per-pool cap) pair — so they pin
+# the envelope rather than inheriting whatever mode the process runs in.
+_TEST = MODE_PROFILES[MODE_TEST]
+_TEST_BOOK = _TEST["book_usd"]
+_TEST_CAP = 1.0 / _TEST["max_positions"]
 
 
 def test_bounds_strictly_one_sided_buy_under_price():
@@ -338,12 +347,15 @@ def test_default_800_book_can_open_a_major():
 
 def test_marginal_pool_is_trimmed_not_refused():
     # A thin trending book: fee only just covers the open cost -> smaller slice,
-    # not a hard SIT.
+    # not a hard SIT. pct_max pinned: the trim is the subject, and the ambient
+    # prod cap would shrink the slice until the ratio fell through the floor and
+    # the pool was refused instead of trimmed.
     out = jev_size(role="portfolio", tvl=9.0e4, vol24=1.3e5, bin_step=50,
                    dynamic_fee_pct=0.2, outside_slots=6, rug_noul=1.0,
-                   vol_daily_pct=10.0, sol_usd=150.0, book_usd=600.0)
+                   vol_daily_pct=10.0, sol_usd=150.0, book_usd=600.0,
+                   pct_max=_TEST_CAP)
     assert out["worth_tier"] == "MARGINAL"
-    assert 0.0 < out["pct"] < PORTFOLIO_PCT_MAX * 0.999   # trimmed below the full cap
+    assert 0.0 < out["pct"] < _TEST_CAP * 0.999      # trimmed below the full cap
     assert out["worth"] is True                 # but not refused
 
 
@@ -437,20 +449,43 @@ def test_100_book_with_a_100_floor_can_never_open():
 def test_100_book_opens_lively_books_and_sits_on_deep_calm_ones():
     # Expected fee scales with the slice; the one-time open cost does not. At a
     # $100 book the deep/calm books fall into the NO tier while hot ones clear.
+    # Pinned to the TEST profile: these tiers are a property of a (book, cap)
+    # pair, and this is the rig the recorded demo ran on. The prod envelope is
+    # covered by test_prod_profile_opens_a_lively_book below.
     lively = jev_size(role="portfolio", tvl=50_000, vol24=120_000, bin_step=50,
                       dynamic_fee_pct=1.0, outside_slots=0, rug_noul=0.95,
-                      vol_daily_pct=6.0, sol_usd=150.0, book_usd=RACE_USD)
+                      vol_daily_pct=6.0, sol_usd=150.0,
+                      book_usd=_TEST_BOOK, pct_max=_TEST_CAP)
     assert lively["worth_tier"] == "GO"
-    assert lively["size_usd"] >= MIN_POSITION_USD
+    assert lively["size_usd"] >= _TEST["min_position_usd"]
 
     # The pool that still sits out is the deep one whose fee rate is too thin to
     # pay the fixed open cost at this book. (At two slots a mid-fee deep pool
     # reaches MARGINAL and opens trimmed -- that is the point of the wider cap.)
     deep = jev_size(role="portfolio", tvl=2_000_000, vol24=1_500_000, bin_step=4,
                     dynamic_fee_pct=0.05, outside_slots=0, rug_noul=0.95,
-                    vol_daily_pct=2.0, sol_usd=150.0, book_usd=RACE_USD)
+                    vol_daily_pct=2.0, sol_usd=150.0,
+                    book_usd=_TEST_BOOK, pct_max=_TEST_CAP)
     assert deep["worth_tier"] == "NO"
     assert deep["pct"] == 0.0
+
+
+def test_prod_profile_opens_a_lively_book():
+    """The competition envelope must actually deploy capital.
+
+    A bigger book means bigger slices and therefore bigger absolute fees, so a
+    lively book must clear prod's larger per-position floor rather than tripping
+    it. Without this, prod could size every open under the floor and sit forever.
+    """
+    prod = MODE_PROFILES[MODE_PROD]
+    cap = 1.0 / prod["max_positions"]
+    out = jev_size(role="portfolio", tvl=50_000, vol24=120_000, bin_step=50,
+                   dynamic_fee_pct=1.0, outside_slots=0, rug_noul=0.95,
+                   vol_daily_pct=6.0, sol_usd=150.0,
+                   book_usd=prod["book_usd"], pct_max=cap)
+    assert out["worth_tier"] == "GO"
+    assert out["size_usd"] >= prod["min_position_usd"]
+    assert out["size_usd"] <= prod["book_usd"] * cap + 1e-6
 
 
 # ────────────── the live rug card (Jupiter v2 shapes) ──────────────
@@ -492,6 +527,66 @@ def test_rug_card_still_fails_closed_on_the_real_checks():
     assert _card(tvl=0.5)["ghost_tape"] is True
     assert _card(bin_step=200)["coarse_bins"] is True
     assert not any_red(_card())                            # a clean card stays clean
+
+
+# ------------------------------------------------------------------ run modes
+
+def test_mode_profiles_are_coherent():
+    """Both profiles must hold the two invariants the sizing math relies on.
+
+    The per-pool cap is derived as 1/slots, so slots x cap must not exceed the
+    book; and a book split evenly across the slots must still clear the
+    per-position floor, or the last opens get rejected for insufficient funds.
+    """
+    for name, prof in MODE_PROFILES.items():
+        book, slots, floor = (prof["book_usd"], prof["max_positions"],
+                              prof["min_position_usd"])
+        assert slots >= 1, name
+        assert (1.0 / slots) * slots <= 1.0 + 1e-9, name
+        assert book / slots >= floor, f"{name}: {book}/{slots} < {floor}"
+
+
+def test_default_mode_is_the_small_book(monkeypatch):
+    """Unset JEV_MODE must land on test — the safe direction to fail."""
+    assert DEFAULT_MODE == MODE_TEST
+    monkeypatch.delenv("JEV_MODE", raising=False)
+    assert mode_profile()["label"] == "TEST"
+    assert mode_profile("")["label"] == "TEST"
+
+
+def test_mode_profile_resolves_case_and_whitespace_insensitively():
+    assert mode_profile("PROD")["book_usd"] == 800.0
+    assert mode_profile(" Prod ")["max_positions"] == 5
+    assert mode_profile("test")["book_usd"] == 100.0
+    assert is_known_mode("PROD") and is_known_mode("prod")
+    assert not is_known_mode("bogus")
+
+
+def test_unknown_mode_falls_back_instead_of_raising():
+    """A typo in JEV_MODE must not take the desk down mid-run."""
+    assert mode_profile("nonsense") == MODE_PROFILES[DEFAULT_MODE]
+    assert mode_profile("nonsense")["label"] == "TEST"
+    assert mode_profile("nonsense")["book_usd"] == 100.0
+
+
+def test_active_constants_are_derived_from_the_profile():
+    """RACE_USD / MAX_POSITIONS / MIN_POSITION_USD are profile lookups, not
+    literals — otherwise a mode switch would silently leave the book behind."""
+    prof = mode_profile(MODE)
+    assert RACE_USD == float(prof["book_usd"])
+    assert MAX_POSITIONS == int(prof["max_positions"])
+    assert MIN_POSITION_USD == float(prof["min_position_usd"])
+    assert MODE_LABEL == prof["label"]
+    assert PORTFOLIO_PCT_MAX == 1.0 / MAX_POSITIONS
+    assert MODE_IS_KNOWN is (MODE in MODE_PROFILES)
+
+
+def test_prod_profile_is_the_competition_envelope():
+    """Guards the numbers the submission advertises: 800 USDC across 3-5."""
+    prod = MODE_PROFILES[MODE_PROD]
+    assert prod["book_usd"] == 800.0
+    assert 3 <= prod["max_positions"] <= 5
+    assert MODE_PROFILES[MODE_TEST]["book_usd"] == 100.0
 
 
 if __name__ == "__main__":

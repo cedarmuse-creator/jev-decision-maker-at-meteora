@@ -9,15 +9,71 @@ churn gate. Kept pure so it is unit-testable without a key.
 from __future__ import annotations
 
 import math
+import os
 from typing import Iterable
 
+# ------------------------------------------------------------------ run modes
+# Two ways to run JEV. The book, the slot budget and the per-position floor move
+# TOGETHER: a 2-slot budget on an 800 USDC book would open $400 walls, and a
+# 5-slot budget on a 100 USDC book would open dust under the fee-vs-cost floor.
+#
+#   test — small book, for organizers and capital-constrained testing
+#   prod — the 48-hour competition envelope
+#
+# Selected by the `JEV_MODE` env var (read at import) or the strategy's `mode`
+# key. Everything downstream follows from here: the jev_select / jev_size /
+# jev_gate config defaults, and the dashboard's book and slot count.
+MODE_TEST = "test"
+MODE_PROD = "prod"
+DEFAULT_MODE = MODE_TEST
+
+MODE_PROFILES: dict[str, dict] = {
+    MODE_TEST: {
+        "label": "TEST",
+        "book_usd": 100.0,
+        "max_positions": 2,
+        "min_position_usd": 12.0,
+    },
+    MODE_PROD: {
+        "label": "PROD",
+        "book_usd": 800.0,
+        "max_positions": 5,
+        "min_position_usd": 100.0,
+    },
+}
+
+
+def _mode_key(mode: str | None = None) -> str:
+    return str(mode or os.environ.get("JEV_MODE") or DEFAULT_MODE).strip().lower()
+
+
+def is_known_mode(mode: str | None = None) -> bool:
+    """True if `mode` (or $JEV_MODE) names a real profile."""
+    return _mode_key(mode) in MODE_PROFILES
+
+
+def mode_profile(mode: str | None = None) -> dict:
+    """Resolve a run mode to its book / slot / floor profile.
+
+    An unknown or blank name falls back to `DEFAULT_MODE` instead of raising: a
+    typo in `JEV_MODE` must not take the desk down mid-run, and the mode label
+    printed in every report makes the substitution visible.
+    """
+    return MODE_PROFILES.get(_mode_key(mode), MODE_PROFILES[DEFAULT_MODE])
+
+
+MODE = _mode_key()
+MODE_IS_KNOWN = MODE in MODE_PROFILES
+_PROFILE = mode_profile(MODE)
+
 # Model-sizing envelope (JEV Score -> % of book). Overridden live by jev_size.
-# RACE_USD is the desk's book. Code default = the desk's live book, so a
-# config-less run sizes slices the wallet can actually fund. The book is set in
-# strategies/jev_desk/strategy.md (total_amount_quote) and passed in per run.
-RACE_USD = 100.0
-MAX_POSITIONS = 2             # slot budget the per-pool cap is derived from
-MIN_POSITION_USD = 12.0       # smallest slice worth opening at this book
+# RACE_USD is the desk's book, taken from the active run mode. Code default =
+# the desk's live book, so a config-less run sizes slices the wallet can fund.
+# The book is also set in strategies/jev_desk/strategy.md (total_amount_quote).
+RACE_USD = float(_PROFILE["book_usd"])
+MAX_POSITIONS = int(_PROFILE["max_positions"])   # slot budget the cap derives from
+MIN_POSITION_USD = float(_PROFILE["min_position_usd"])
+MODE_LABEL = str(_PROFILE["label"])
 MAJOR_PCT_MIN = 0.30
 MAJOR_PCT_MAX = 0.45
 MINOR_PCT_MAX = 0.20
@@ -424,17 +480,23 @@ def bounds_ok(lo: float, hi: float, price: float, side: str) -> bool:
 # === JEV decision logic: model proposes, math disposes ===
 
 
-def _role_clamp(role: str, pct: float) -> float:
-    """Hold a slice inside its role envelope (major floor/ceiling, caps for the rest)."""
+def _role_clamp(role: str, pct: float, pct_max: float | None = None) -> float:
+    """Hold a slice inside its role envelope (major floor/ceiling, caps for the rest).
+
+    `pct_max` overrides the portfolio per-pool cap, which is derived from the
+    active run mode's slot budget. Injectable so a caller can pin the envelope it
+    means rather than inheriting whatever mode the process happens to be in.
+    """
     try:
         pct = max(0.0, float(pct))
     except (TypeError, ValueError):
         return 0.0
+    cap = PORTFOLIO_PCT_MAX if pct_max is None else float(pct_max)
     if role == "major":
         if pct > 0:
             pct = max(MAJOR_PCT_MIN, min(MAJOR_PCT_MAX, pct))
     elif role == "portfolio":
-        pct = min(PORTFOLIO_PCT_MAX, pct)          # modest per-pool cap
+        pct = min(cap, pct)                        # modest per-pool cap
     else:  # minor
         pct = min(MINOR_PCT_MAX, pct)
     return pct
@@ -506,6 +568,7 @@ def jev_size(*, role: str, tvl: float, vol24: float, bin_step: float,
              dynamic_fee_pct: float, outside_slots: int, rug_noul: float,
              vol_daily_pct: float = 2.0, sol_usd: float = 150.0,
              trust_floor: float = TRUST_NOUL_FLOOR, book_usd: float = RACE_USD,
+             pct_max: float | None = None,
              pct_override: float | None = None,
              worth_margin: float = WORTH_MARGIN,
              worth_floor: float = WORTH_MARGIN_FLOOR,
@@ -565,7 +628,7 @@ def jev_size(*, role: str, tvl: float, vol24: float, bin_step: float,
             pct = max(0.0, float(pct_override))
         except (TypeError, ValueError):
             pct = 0.0
-    pct = _role_clamp(role, pct)
+    pct = _role_clamp(role, pct, pct_max)
 
     # Horizon follows the role: a major / portfolio position is held long-term
     # (open cost amortizes to near-zero, so it is worth opening); a minor has a
@@ -585,7 +648,7 @@ def jev_size(*, role: str, tvl: float, vol24: float, bin_step: float,
     sized = worth_sized_pct(pct, width["worth_ratio"], margin=worth_margin,
                             floor=worth_floor)
     if sized != pct:
-        pct = _role_clamp(role, sized)
+        pct = _role_clamp(role, sized, pct_max)
         if pct > 0:
             width = jev_width(
                 tvl=tvl, vol24=vol24, bin_step=bin_step,

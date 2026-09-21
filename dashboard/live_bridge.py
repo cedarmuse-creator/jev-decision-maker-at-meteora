@@ -341,6 +341,7 @@ def build() -> dict:
 
     return {
         "tick": int(time.time()),
+        "mode": (getattr(M, "MODE_LABEL", "TEST") if M else "TEST"),
         "max_positions": (getattr(M, "MAX_POSITIONS", 2) if M else 2),
         "book": BOOK,
         "book_used": round(used, 2),

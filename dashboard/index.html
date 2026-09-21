@@ -75,6 +75,7 @@
     <span>LIVE <b id="m-live" class="blink">DRY-RUN</b></span>
     <span>UPDATED <b id="m-tick">—</b></span>
     <span>BOOK <b id="m-book">$800</b></span>
+    <span>MODE <b id="m-mode">—</b></span>
     <span>WATCHING <b id="m-watch">—</b></span>
   </div>
 
@@ -137,11 +138,13 @@ function posClass(p){
 
 function render(s){
   // A readable, advancing clock: on camera this is the proof the desk is live
-  // rather than a screenshot (a raw epoch reads as "TICK 1789884224").
+  // rather than a screenshot (the raw epoch read as "TICK 1789884224").
   document.getElementById("m-tick").textContent = s.tick
     ? new Date(s.tick * 1000).toLocaleTimeString([], {hour12: false}) : "—";
   document.getElementById("m-slots").textContent = s.max_positions ?? "—";
   document.getElementById("m-book").textContent = "$" + (s.book ?? 800);
+  // Which profile is live: test (small book) or prod (competition envelope).
+  document.getElementById("m-mode").textContent = s.mode ?? "—";
   document.getElementById("m-watch").textContent = (s.pairs_watched ?? "—") + " pairs";
   const live = s.live === true;
   const le = document.getElementById("m-live");

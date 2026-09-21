@@ -25,6 +25,10 @@ USDT = _m.USDT_MINT
 DEEP = dict(role="portfolio", tvl=20_000_000.0, vol24=8_000_000.0, bin_step=4,
             dynamic_fee_pct=0.03, outside_slots=0, rug_noul=1.0,
             vol_daily_pct=2.0, sol_usd=109.03, book_usd=100.0,
+            # Pinned on purpose: this test is about the TREND allowance, not the
+            # ambient mode's per-pool cap. Left ambient, the prod cap (0.2) would
+            # shrink the slice until the credit could no longer carry it.
+            pct_max=0.5,
             base_mint=SOL, base_symbol="SOL", quote_mint=USDC, quote_symbol="USDC")
 
 
