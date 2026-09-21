@@ -1,5 +1,7 @@
 # JEV — Decision Maker at Meteora
 
+![JEV — Decision Maker at Meteora](JEV-01.png)
+
 A Condor trading agent where **one structured-decision model** ranks the live
 Meteora DLMM universe, runs live rug cards, and holds a **portfolio of 3–5
 pools** — and you can read every verdict.
