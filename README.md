@@ -6,6 +6,26 @@ pools** — and you can read every verdict.
 
 Not a hummingbot/condor fork. Drop `agents/jev/` into a Condor checkout.
 
+## Why the name JEV
+
+Named after **Jev**, TypeSafe AI's flagship **System One model** — the first
+model built to make decisions *inside software* rather than to chat. You send it
+a `state` and typed questions; it returns typed answers with calibrated
+confidence, not prose to parse.
+
+That is the shape this agent needs, so Jev supplies its judgement:
+
+- one **Noul** question per candidate — *"should this pair earn one of the
+  slots?"* — all asked in a **single** fan-out call, so the reply is a ranking
+  rather than a queue of prompts;
+- a **Score** question for sizing — *what fraction of the book?*
+
+The model proposes; `_jev_math` clamps every answer to the role envelope and can
+still refuse it. With no key the desk runs on pure math.
+
+- Console: <https://console.typesafe.ai/home>
+- Docs: <https://docs.typesafe.ai> · model tag `jev-latest` (override with `TYPESAFE_MODEL`)
+
 ## The idea
 
 Most bots hard-code a pool. JEV watches a model read the live Meteora tape and
