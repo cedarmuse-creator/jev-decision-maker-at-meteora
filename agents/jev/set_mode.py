@@ -5,7 +5,7 @@ The book, the slot budget and the per-position floor are coupled, and the desk
 seeds its Start dialog from `strategy.md`. Editing five numbers by hand is how
 they drift apart, so this writes them together from the profile in `_jev_math`.
 
-    python agents/jev/set_mode.py prod     # 800 USDC / 5 slots / 100.0 floor
+    python agents/jev/set_mode.py prod     # 800 USDC / 5 slots / 50.0 floor
     python agents/jev/set_mode.py test     # 100 USDC / 2 slots /  12.0 floor
     python agents/jev/set_mode.py          # report the current mode, change nothing
 

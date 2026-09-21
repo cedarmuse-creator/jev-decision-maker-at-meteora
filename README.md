@@ -45,7 +45,7 @@ keeps the desk running — the model is an advisor, never a hard requirement.
 Two profiles. Switching is **one command**:
 
 ```bash
-python agents/jev/set_mode.py prod   # 800 USDC / 5 slots / 100.0 floor
+python agents/jev/set_mode.py prod   # 800 USDC / 5 slots / 50.0 floor
 python agents/jev/set_mode.py test   # 100 USDC / 2 slots /  12.0 floor
 python agents/jev/set_mode.py        # report the current mode, change nothing
 ```
@@ -56,7 +56,7 @@ values it couples, so they cannot drift apart:
 | Mode | Book | Slots | Min slice | Per-pool cap | Risk ceiling | Use |
 |---|---|---|---|---|---|---|
 | `test` *(default)* | 100 USDC | 2 | 12.0 | 0.50 | 100 | organizers, constrained testing |
-| `prod` | 800 USDC | 5 | 100.0 | 0.20 | 800 | the 48-hour competition envelope |
+| `prod` | 800 USDC | 5 | 50.0 | 0.20 | 800 | the 48-hour competition envelope |
 
 `_jev_math` reads `strategy.md`'s `mode:` key at import, so the routine defaults
 and the dashboard both follow — nothing else needs editing. `$JEV_MODE` overrides

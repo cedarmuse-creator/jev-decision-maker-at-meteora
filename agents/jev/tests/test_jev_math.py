@@ -582,6 +582,24 @@ def test_active_constants_are_derived_from_the_profile():
     assert MODE_IS_KNOWN is (MODE in MODE_PROFILES)
 
 
+def test_every_mode_keeps_the_smallest_score_level_reachable():
+    """The floor must not sit above the model's smallest non-zero Score level.
+
+    `_jev_sdk.size_levels` gives the portfolio role `[0, .32c, .64c, c]` of the
+    role cap, so the smallest non-zero answer is `0.32 * cap * book`. Set the
+    floor above that and the answer can never open: the desk still looks alive
+    (mid/top answers trade) but silently loses an option — and at a higher floor
+    it stops trading altogether while the dashboard shows nothing wrong.
+    """
+    for mode in (MODE_TEST, MODE_PROD):
+        prof = MODE_PROFILES[mode]
+        cap = 1.0 / int(prof["max_positions"])
+        smallest = 0.32 * cap * float(prof["book_usd"])
+        assert float(prof["min_position_usd"]) <= smallest, (
+            f"{mode}: floor ${prof['min_position_usd']:.2f} sits above the "
+            f"smallest Score level ${smallest:.2f} — that answer is dead")
+
+
 def test_prod_profile_is_the_competition_envelope():
     """Guards the numbers the submission advertises: 800 USDC across 3-5."""
     prod = MODE_PROFILES[MODE_PROD]

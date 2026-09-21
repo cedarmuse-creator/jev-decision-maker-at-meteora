@@ -40,7 +40,11 @@ MODE_PROFILES: dict[str, dict] = {
         "label": "PROD",
         "book_usd": 800.0,
         "max_positions": 5,
-        "min_position_usd": 100.0,
+        # Must sit at or below the model's SMALLEST non-zero Score level, or
+        # that answer can never clear the floor and the desk silently loses an
+        # option. Level 1 = 0.32 x cap x book = 0.32 x (800/5) = $51.20 here
+        # ($16.00 in test), so $50 keeps all three levels live.
+        "min_position_usd": 50.0,
     },
 }
 

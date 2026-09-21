@@ -17,7 +17,7 @@ default_config:
   # slot budget and the per-position floor move TOGETHER:
   #
   #   test — 100 USDC / 2 slots / 12.0 floor   organizers + constrained testing
-  #   prod — 800 USDC / 5 slots / 100.0 floor  the 48-hour competition envelope
+  #   prod — 800 USDC / 5 slots / 50.0 floor   the 48-hour competition envelope
   #
   # Switch with `python agents/jev/set_mode.py prod`, which rewrites this key AND
   # the coupled values below in one go, then restart the desk. Editing `mode`
@@ -124,13 +124,20 @@ mid-depth pools. Fewer, larger positions also cut total open-cost drag from
 ~$4.10 to ~$1.60 per full book. Prod's 5 slots on an $800 book do not have this
 problem — the same answer sizes ~$160, so the floor is not in play.
 
-`min_position_usd` is **$12** — it must sit at or below the model's *smallest
-non-zero* Score level, or the model's answer can never clear the floor. The
-Score levels derive from the role cap (`[0, 0.32·cap, 0.64·cap, cap]`), so at a
-$100 book with `PORTFOLIO_PCT_MAX = 0.20` they are `[0, $6.40, $12.80, $20.00]`.
-A $20 floor above that means only a top-of-scale answer opens, and every
-mid-scale answer is refused — the desk looks alive and silently never trades.
-Raise the floor only alongside the book: a $20 floor needs a book near $160.
+`min_position_usd` must sit at or below the model's *smallest non-zero* Score
+level, or that answer can never clear the floor. The levels derive from the role
+cap (`[0, 0.32·cap, 0.64·cap, cap]`, `cap = PORTFOLIO_PCT_MAX`):
+
+| mode | cap | book | Score levels | floor |
+|---|---|---|---|---|
+| `test` | 0.50 | $100 | `[0, 16.00, 32.00, 50.00]` | **$12** ✓ |
+| `prod` | 0.20 | $800 | `[0, 51.20, 102.40, 160.00]` | **$50** ✓ |
+
+Set the floor above level 1 and that answer is dead: the desk still looks alive
+on mid/top answers, and at a higher floor it stops trading altogether while the
+dashboard shows nothing wrong. Raise the floor only alongside the book — a $100
+floor needs `0.32·cap·book ≥ 100`, i.e. at most ~2.5 slots on an $800 book.
+`test_every_mode_keeps_the_smallest_score_level_reachable` asserts this per mode.
 
 **A $100 book is a fee-dominated regime.** The one-time open cost is fixed
 (`open_cost_usd` ≈ 0.0055 SOL ≈ $0.83 at SOL $150) while expected fee scales
@@ -261,8 +268,12 @@ Snapshot → `state/jev_select.json`.
 ```python
 manage_routines(action="run", name="jev_select",
   strategy_id="jev.jev_desk",
-  config={"candidates":[<ranked rows>],"max_positions":5,"book_usd":<book>,"min_position_usd":12,"max_new_slots":2})
+  config={"candidates":[<ranked rows>],"max_new_slots":2})
 ```
+
+`max_positions`, `book_usd` and `min_position_usd` are omitted **on purpose**:
+they default from the active run mode, so hand-passing them is how a prod run
+ends up sizing to the test floor. Only pass them to deliberately deviate.
 
 **5 — Confirm card (optional belt).** If a pick was not enriched, run the single
 card now. Any red → drop it.
