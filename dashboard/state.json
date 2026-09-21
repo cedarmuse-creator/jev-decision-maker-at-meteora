@@ -1,0 +1,198 @@
+{
+  "tick": 1789837163,
+  "book": 800.0,
+  "book_used": 400.0,
+  "free_book": 400.0,
+  "positions": [
+    {
+      "base": "BONK",
+      "pair": "BONK-USDC",
+      "pool": "BONKxxxxxxxUSDCxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "tab": "trending",
+      "role": "portfolio",
+      "verb": "HOLD",
+      "amount": 200.0,
+      "pct": 0.25,
+      "width_pct": 6.0,
+      "bin_count": 12,
+      "conf": 0.78,
+      "scores": {
+        "depth": 0.79,
+        "heat": 0.66,
+        "rug": 0.92,
+        "fee": 0.12
+      },
+      "worth": true,
+      "open_cost": 0.82,
+      "expected_fee": 5.28,
+      "pnl": 4.12
+    },
+    {
+      "base": "WIF",
+      "pair": "WIF-USDC",
+      "pool": "WIFxxxxxxxUSDCxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "tab": "trending",
+      "role": "portfolio",
+      "verb": "HOLD",
+      "amount": 200.0,
+      "pct": 0.25,
+      "width_pct": 6.0,
+      "bin_count": 12,
+      "conf": 0.75,
+      "scores": {
+        "depth": 0.75,
+        "heat": 0.65,
+        "rug": 0.88,
+        "fee": 0.15
+      },
+      "worth": true,
+      "open_cost": 0.82,
+      "expected_fee": 6.45,
+      "pnl": 0.22
+    },
+    {
+      "base": "USDG",
+      "pair": "USDG-USDC",
+      "pool": "USDGxxxxxxxUSDCxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "tab": "rwa",
+      "role": "portfolio",
+      "verb": "SIT",
+      "amount": 200.0,
+      "pct": 0.25,
+      "width_pct": 6.0,
+      "bin_count": 30,
+      "conf": 0.68,
+      "scores": {
+        "depth": 0.86,
+        "heat": 0.18,
+        "rug": 1.0,
+        "fee": 0.02
+      },
+      "worth": false,
+      "open_cost": 0.82,
+      "expected_fee": 0.23,
+      "pnl": 0.0
+    },
+    {
+      "base": "SOL",
+      "pair": "SOL-USDC",
+      "pool": "So11111111111111111111111111111111111111112EPjF",
+      "tab": "top",
+      "role": "portfolio",
+      "verb": "SIT",
+      "amount": 200.0,
+      "pct": 0.25,
+      "width_pct": 6.0,
+      "bin_count": 30,
+      "conf": 0.73,
+      "scores": {
+        "depth": 0.91,
+        "heat": 0.25,
+        "rug": 1.0,
+        "fee": 0.04
+      },
+      "worth": false,
+      "open_cost": 0.82,
+      "expected_fee": 0.66,
+      "pnl": 0.0
+    },
+    {
+      "base": "USDM",
+      "pair": "USDM-USDC",
+      "pool": "USDMxxxxxxxUSDCxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "tab": "rwa",
+      "role": "portfolio",
+      "verb": "SIT",
+      "amount": 200.0,
+      "pct": 0.25,
+      "width_pct": 6.0,
+      "bin_count": 30,
+      "conf": 0.67,
+      "scores": {
+        "depth": 0.84,
+        "heat": 0.17,
+        "rug": 1.0,
+        "fee": 0.02
+      },
+      "worth": false,
+      "open_cost": 0.82,
+      "expected_fee": 0.22,
+      "pnl": 0.0
+    }
+  ],
+  "decisions": [
+    {
+      "pool": "BONK",
+      "role": "portfolio",
+      "verb": "HOLD",
+      "amount": 200.0,
+      "conf": 0.78,
+      "scores": {
+        "depth": 0.79,
+        "heat": 0.66,
+        "rug": 0.92,
+        "fee": 0.12
+      }
+    },
+    {
+      "pool": "WIF",
+      "role": "portfolio",
+      "verb": "HOLD",
+      "amount": 200.0,
+      "conf": 0.75,
+      "scores": {
+        "depth": 0.75,
+        "heat": 0.65,
+        "rug": 0.88,
+        "fee": 0.15
+      }
+    },
+    {
+      "pool": "USDG",
+      "role": "portfolio",
+      "verb": "SIT",
+      "amount": 200.0,
+      "conf": 0.68,
+      "scores": {
+        "depth": 0.86,
+        "heat": 0.18,
+        "rug": 1.0,
+        "fee": 0.02
+      }
+    },
+    {
+      "pool": "SOL",
+      "role": "portfolio",
+      "verb": "SIT",
+      "amount": 200.0,
+      "conf": 0.73,
+      "scores": {
+        "depth": 0.91,
+        "heat": 0.25,
+        "rug": 1.0,
+        "fee": 0.04
+      }
+    },
+    {
+      "pool": "USDM",
+      "role": "portfolio",
+      "verb": "SIT",
+      "amount": 200.0,
+      "conf": 0.67,
+      "scores": {
+        "depth": 0.84,
+        "heat": 0.17,
+        "rug": 1.0,
+        "fee": 0.02
+      }
+    }
+  ],
+  "metrics": {
+    "realized_pnl": 4.34,
+    "unrealized_pnl": 0.0,
+    "fees_collected": 2.6,
+    "open_positions": 2
+  },
+  "pairs_watched": 6,
+  "note": "simulated \u2014 no live exchange"
+}

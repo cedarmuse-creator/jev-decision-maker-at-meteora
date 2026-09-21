@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Local deny-lists read by agents/jev/tests/validate_agent.py.
+# Never publish sibling-entry or model-provider names.
+.sibling-markers
+.provider-strings
+
+# Runtime state, sessions and agent memory (host paths + account ids)
+state/
+agents/jev/state/
+agents/jev/store/
+agents/jev/strategies/*/sessions/
+session_state.json
+
+# Media / editor scratch
+*.mp4
+*.wfp

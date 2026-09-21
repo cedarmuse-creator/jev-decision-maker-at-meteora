@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JEV — Live Decision Desk</title>
+<style>
+  :root{
+    --bg:#080608; --panel:#140f12; --panel2:#1a1418; --line:#2a1a1c;
+    --ice:#ff6b4a; --ice-dim:#a33a28; --ember:#ff3d1f; --green:#ff7a5c;
+    --red:#ff5d6c; --muted:#8a7878; --txt:#f2eef0; --grid:#221618;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    background:var(--bg);color:var(--txt);font-size:13px;padding:18px 22px;
+    background-image:radial-gradient(circle at 18% 0%,rgba(255,61,31,.12) 0%,transparent 50%),
+      radial-gradient(circle at 90% 100%,rgba(255,107,74,.08) 0%,transparent 45%);
+    min-height:100vh}
+  h1{font-size:22px;letter-spacing:3px;font-weight:600;color:var(--ice)}
+  h1 .sub{color:var(--muted);font-size:12px;letter-spacing:1px;display:block;margin-top:6px}
+  .meta{display:flex;gap:18px;flex-wrap:wrap;color:var(--muted);font-size:12px;margin:12px 0 16px}
+  .meta b{color:var(--ice)}
+  .kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:14px}
+  .kpi{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+  .kpi .l{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted)}
+  .kpi .n{font-size:22px;margin-top:6px;color:var(--txt);letter-spacing:.5px}
+  .kpi .n.pos{color:#7dffb0} .kpi .n.neg{color:var(--red)}
+  .grid{display:grid;grid-template-columns:1.25fr 1fr 1fr;gap:14px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;
+    box-shadow:0 0 0 1px #000 inset, 0 8px 24px rgba(0,0,0,.4);min-height:520px}
+  .card h2{font-size:11px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;
+    margin-bottom:12px;display:flex;justify-content:space-between;align-items:center}
+  .pill{font-size:9px;padding:2px 7px;border-radius:20px;border:1px solid var(--line);color:var(--muted)}
+  .pill.live{color:#7dffb0;border-color:#1c5a44}
+  .row{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px dashed var(--grid)}
+  .row:last-child{border-bottom:none}
+  .pos-major{border-left:3px solid var(--ice);padding-left:10px}
+  .pos-minor{border-left:3px solid var(--ember);padding-left:10px}
+  .k{color:var(--txt);font-size:14px} .v{color:var(--txt);text-align:right;font-size:14px}
+  .badge{font-size:9px;padding:2px 6px;border-radius:4px;display:inline-block}
+  .b-wait{background:#3a1a14;color:var(--ice)} .b-shift{background:#3a2a12;color:#ffb080}
+  .b-sit{background:#222;color:var(--muted)} .b-select{background:#3a1810;color:#ff9a7a}
+  .b-hold{background:#2a1610;color:var(--ice)}
+  .tabchip{font-size:9px;color:var(--muted);border:1px solid var(--line);padding:1px 5px;border-radius:3px;margin-left:4px}
+  .conf{height:4px;background:var(--grid);border-radius:3px;overflow:hidden;margin-top:6px;width:160px}
+  .conf>i{display:block;height:100%;background:linear-gradient(90deg,var(--ice-dim),var(--ice))}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th{color:var(--muted);text-align:left;font-weight:400;padding:6px 6px;border-bottom:1px solid var(--line)}
+  td{padding:7px 6px;border-bottom:1px solid var(--grid)}
+  .decision{font-size:12px;padding:10px 12px;background:var(--panel2);border:1px solid var(--line);
+    border-radius:8px;margin-bottom:8px}
+  .decision .why{color:var(--muted);font-size:11px;margin-top:5px;line-height:1.4}
+  .gauge{display:flex;align-items:center;gap:12px;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+  .donut{width:72px;height:72px;border-radius:50%;
+    background:conic-gradient(var(--ice) 0 48%, var(--ember) 48% 78%, var(--grid) 78% 100%);
+    display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--ice);flex-shrink:0}
+  .donut span{background:var(--panel);width:50px;height:50px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center}
+  .leg{font-size:11px;color:var(--muted);line-height:1.8}
+  .leg i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:middle}
+  .stream{max-height:280px;overflow:auto;margin-top:10px}
+  .feed{font-size:11px;color:var(--muted);padding:5px 0;border-bottom:1px dashed var(--grid);line-height:1.35}
+  .feed b{color:var(--txt)} .feed .ok{color:#7dffb0} .feed .no{color:var(--red)}
+  .tag{color:var(--ice)} .tagm{color:var(--ember)}
+  footer{color:var(--muted);font-size:11px;margin-top:16px;text-align:center}
+  .blink{animation:bk 1.4s infinite}@keyframes bk{50%{opacity:.35}}
+</style>
+</head>
+<body>
+  <h1>JEV <span style="color:var(--ember)">·</span> DECISION DESK
+    <span class="sub">Decision Maker at Meteora — ranks Top / Trending / New / RWA · holds up to <b id="m-slots">—</b> pools · every verdict readable</span></h1>
+  <div class="meta">
+    <span>SESSION <b id="m-session">demo</b></span>
+    <span>MODEL <b id="m-model">jev-latest</b></span>
+    <span>LIVE <b id="m-live" class="blink">DRY-RUN</b></span>
+    <span>UPDATED <b id="m-tick">—</b></span>
+    <span>BOOK <b id="m-book">$800</b></span>
+    <span>WATCHING <b id="m-watch">—</b></span>
+  </div>
+
+  <div class="kpis">
+    <div class="kpi"><div class="l">Book used</div><div class="n" id="k-used">—</div></div>
+    <div class="kpi"><div class="l">Free</div><div class="n" id="k-free">—</div></div>
+    <div class="kpi"><div class="l">Open positions</div><div class="n" id="k-open">—</div></div>
+    <div class="kpi"><div class="l">Fees collected</div><div class="n" id="k-fees">—</div></div>
+    <div class="kpi"><div class="l">PnL</div><div class="n" id="k-pnl">—</div></div>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>Positions <span class="pill live">portfolio</span></h2>
+      <div id="positions"></div>
+    </div>
+    <div class="card">
+      <h2>Decisions <span class="pill">System One</span></h2>
+      <div id="decisions"></div>
+      <div class="gauge">
+        <div class="donut"><span id="alloc">--</span></div>
+        <div class="leg">
+          <div><i style="background:var(--ice)"></i>Steady sleeve <b id="leg-major">--</b></div>
+          <div><i style="background:var(--ember)"></i>Hot sleeve <b id="leg-minor">--</b></div>
+          <div><i style="background:var(--grid)"></i>Cash <b id="leg-cash">--</b></div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Trades · conf stream <span class="pill">executor</span></h2>
+      <table>
+        <thead><tr><th>time</th><th>pool</th><th>side</th><th>$</th><th>verb</th></tr></thead>
+        <tbody id="trades"></tbody>
+      </table>
+      <div class="stream" id="conf"></div>
+    </div>
+  </div>
+
+  <footer>JEV — Decision Maker at Meteora · model proposes, math disposes · dry-run until jev.live=yes</footer>
+
+<script>
+const SESSION = new URLSearchParams(location.search).get("session") || "demo";
+document.getElementById("m-session").textContent = SESSION;
+
+function badgeClass(verb){
+  const v = (verb||"").toUpperCase();
+  if(v==="WAIT") return "b-wait";
+  if(v==="SHIFT" || v==="REBUILD" || v==="MOVE") return "b-shift";
+  if(v==="SELECT") return "b-select";
+  if(v==="HOLD" || v==="BUILD" || v==="READY") return "b-hold";
+  return "b-sit";
+}
+
+function posClass(p){
+  const tab = (p.tab||"").toLowerCase();
+  const role = (p.role||"").toLowerCase();
+  if(role==="major" || tab==="top" || tab==="rwa") return "pos-major";
+  return "pos-minor";
+}
+
+function render(s){
+  // A readable, advancing clock: on camera this is the proof the desk is live
+  // rather than a screenshot (a raw epoch reads as "TICK 1789884224").
+  document.getElementById("m-tick").textContent = s.tick
+    ? new Date(s.tick * 1000).toLocaleTimeString([], {hour12: false}) : "—";
+  document.getElementById("m-slots").textContent = s.max_positions ?? "—";
+  document.getElementById("m-book").textContent = "$" + (s.book ?? 800);
+  document.getElementById("m-watch").textContent = (s.pairs_watched ?? "—") + " pairs";
+  const live = s.live === true;
+  const le = document.getElementById("m-live");
+  le.textContent = live ? "LIVE" : "DRY-RUN";
+  le.className = live ? "" : "blink";
+
+  const used = s.book_used ?? 0, free = s.free_book ?? ((s.book||800)-used);
+  const m = s.metrics || {};
+  document.getElementById("k-used").textContent = "$" + Math.round(used);
+  document.getElementById("k-free").textContent = "$" + Math.round(free);
+  document.getElementById("k-open").textContent = m.open_positions ?? (s.positions||[]).filter(p=>p.verb!=="SIT").length;
+  document.getElementById("k-fees").textContent = "$" + (m.fees_collected ?? 0).toFixed?.(1);
+  const pnl = (m.realized_pnl||0) + (m.unrealized_pnl||0);
+  const pn = document.getElementById("k-pnl");
+  pn.textContent = (pnl>=0?"+":"") + "$" + pnl.toFixed(1);
+  pn.className = "n " + (pnl>=0?"pos":"neg");
+
+  const pos = (s.positions||[]).map(p=>{
+    const cls = posClass(p);
+    const badge = badgeClass(p.verb);
+    const tier = p.worth_tier || (p.worth===false ? "NO" : "");
+    const worth = (tier==="NO" || tier==="MARGINAL")
+      ? `<span class="badge ${tier==="NO"?"b-sit":"b-hold"}">${tier.toLowerCase()}</span>` : '';
+    const width = p.width_pct ? `${Number(p.width_pct).toFixed(2)}% · ${p.bin_count||"—"} bins` : '';
+    const cf = (p.open_cost!=null && p.expected_fee!=null)
+      ? `$${Number(p.expected_fee).toFixed(1)} fee / $${Number(p.open_cost).toFixed(2)} open` : '';
+    const tab = p.tab ? `<span class="tabchip">${p.tab}</span>` : "";
+    const roleLabel = p.role && p.role!=="portfolio" ? p.role : (p.tab||"portfolio");
+    return `<div class="row ${cls}">
+      <div>
+        <div class="k">${p.pair||p.base||"—"}${tab}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:3px">${roleLabel} · <span class="badge ${badge}">${p.verb}</span> ${worth}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">${width} · ${cf}</div>
+        <div class="conf"><i style="width:${Math.round((p.conf||0)*100)}%"></i></div>
+      </div>
+      <div class="v">$${Number(p.amount||0).toFixed(0)}
+        <br><span style="font-size:11px;color:var(--muted)">${(p.pnl||0)>=0?"+":""}${Number(p.pnl||0).toFixed(1)} pnl</span>
+        <br><span style="font-size:10px;color:var(--muted)">conf ${Number(p.conf||0).toFixed(2)}</span>
+      </div>
+    </div>`;
+  }).join("") || '<div class="feed">no open positions</div>';
+  document.getElementById("positions").innerHTML = pos;
+
+  const dec = (s.decisions||[]).slice(0,6).map(d=>`
+    <div class="decision">
+      <div><span class="${d.role==='minor'?'tagm':'tag'}">${(d.role||"pool").toUpperCase()}</span>
+        <b>${d.verdict||d.verb||"—"}</b> · ${(d.pool||"").slice(0,16)} · conf ${Number(d.conf||0).toFixed(2)}</div>
+      <div class="why">${d.reason||""}</div>
+    </div>`).join("") || '<div class="feed">awaiting first decision</div>';
+  document.getElementById("decisions").innerHTML = dec;
+
+  const major = (s.alloc&&s.alloc.major)||0, minor=(s.alloc&&s.alloc.minor)||0;
+  const cash = Math.max(0,100-major-minor);
+  document.getElementById("alloc").textContent = Math.round(major+minor)+"%";
+  document.querySelector(".donut").style.background =
+    `conic-gradient(var(--ice) 0 ${major}%, var(--ember) ${major}% ${major+minor}%, var(--grid) ${major+minor}% 100%)`;
+  document.getElementById("leg-major").textContent = major+"%";
+  document.getElementById("leg-minor").textContent = minor+"%";
+  document.getElementById("leg-cash").textContent = cash+"%";
+
+  const tr=(s.trades||[]).slice(0,8).map(t=>`<tr>
+    <td>${t.time}</td><td>${(t.pool||'').slice(0,12)}</td>
+    <td>${t.side}</td><td>$${Number(t.usd||0).toFixed(0)}</td><td>${t.verb}</td></tr>`).join("")
+    || '<tr><td colspan="5" style="color:var(--muted)">no trades yet</td></tr>';
+  document.getElementById("trades").innerHTML=tr;
+
+  document.getElementById("conf").innerHTML=(s.conf||[]).slice(0,12).map(c=>
+    `<div class="feed"><b>${c.t}</b> ${c.jev==='JEV on'?'<span class="ok">JEV on</span>':'<span class="no">JEV off</span>'} ${c.msg}</div>`
+  ).join("") || '<div class="feed">no conf stream</div>';
+}
+
+async function load(){
+  try{
+    const r = await fetch("state.json?v=" + Date.now());
+    if(!r.ok) throw new Error("no state");
+    render(await r.json());
+  }catch(e){
+    document.getElementById("positions").innerHTML =
+      '<div class="feed">state.json not found — run sim_jev.py or serve this folder.</div>';
+  }
+}
+load();
+setInterval(load, 2500);
+</script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+# JEV agent — third-party dependencies
+#
+# Condor already provides pydantic and python-telegram-bot (the routine
+# contract), and aiohttp (the market-data routines), so only the System One
+# client is strictly new. Everything is listed for standalone runs:
+#
+#   uv pip install -r agents/jev/requirements.txt
+#
+# Without typesafe-sdk the desk still runs: it falls back to pure math and
+# reports jev=JEV off.
+typesafe-sdk>=0.7.0   # TypeSafe System One client (Noul / Score / Choice)
+
+# Used by the market-data and rug-card routines.
+aiohttp>=3.9
+pydantic>=2.0
+python-telegram-bot>=21
+
+# Only needed by tests/test_jev_transport.py, which exercises the real SDK
+# against a mock HTTP transport. Installed with typesafe-sdk.
