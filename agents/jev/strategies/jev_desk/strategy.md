@@ -12,17 +12,17 @@ skills: []
 default_config:
   frequency_sec: 300
   execution_mode: loop
-  # RUN MODE — test | prod. Profiles live in agents/jev/routines/_jev_math.py
-  # (MODE_PROFILES); the $JEV_MODE env var selects one at process level, and that
-  # is the switch that drives the routine defaults and the dashboard. The book,
-  # the slot budget and the per-position floor move TOGETHER:
+  # RUN MODE — test | prod. THIS KEY IS THE SWITCH: `_jev_math` reads it at
+  # import, so the routine defaults and the dashboard both follow. The book, the
+  # slot budget and the per-position floor move TOGETHER:
   #
   #   test — 100 USDC / 2 slots / 12.0 floor   organizers + constrained testing
   #   prod — 800 USDC / 5 slots / 100.0 floor  the 48-hour competition envelope
   #
-  # The values below are the TEST set, and they are what the Start dialog seeds.
-  # To run prod: export JEV_MODE=prod AND set total_amount_quote: 800,
-  # max_open_executors: 5, min_position_usd: 100.0, portfolio_pct_max: 0.20.
+  # Switch with `python agents/jev/set_mode.py prod`, which rewrites this key AND
+  # the coupled values below in one go, then restart the desk. Editing `mode`
+  # alone would leave those values behind. $JEV_MODE overrides the file per
+  # process, for an organizer who would rather pin a profile from the env.
   mode: test
   total_amount_quote: 100
   quote_asset: USDC
@@ -98,23 +98,31 @@ per-position floor. No fixed per-pool dollar split; the book is allocated across
 the chosen portfolio. Each pool is sized from depth / heat / rug scores: calm
 deep book → larger, wider. Thin hot book → smaller, tighter. Confidence low → SIT.
 
-## Book (test book = $100)
+## Book (set by the run mode)
 
-The desk runs a **$100 USDC test book** (`total_amount_quote: 100`). At that
-book every slice is small, and the per-pool cap is set so the portfolio can
-never oversubscribe the wallet:
+The book, the slot budget and the per-position floor all come from the active run
+mode (`_jev_math.MODE_PROFILES`), which the `mode:` key above selects:
+
+| mode | book | slots | min slice | per-pool cap |
+|---|---|---|---|---|
+| `test` | 100 USDC | 2 | 12.0 | 0.50 |
+| `prod` | 800 USDC | 5 | 100.0 | 0.20 |
+
+The per-pool cap is derived so the portfolio can never oversubscribe the wallet:
 
 ```
-PORTFOLIO_PCT_MAX = 1 / MAX_POSITIONS = 1/2 = 0.50
-2 slots × 50% × $100 = $100   ← exactly the book, never over
+PORTFOLIO_PCT_MAX = 1 / MAX_POSITIONS
+test:  1/2 = 0.50   2 slots x 50% x $100 = $100   <- exactly the book, never over
+prod:  1/5 = 0.20   5 slots x 20% x $800 = $800   <- exactly the book, never over
 ```
 
-**Two slots, not five, on purpose.** A slice must be big enough for its fee
-income to cover the *fixed* ~$0.60 one-time open cost. At 5 slots the model's
-mid answer sized ~$12.80, which scored ~0.3× on deep books — refused every tick.
-At 2 slots the same answer sizes ~$32, which clears the floor on mid-depth
-pools. Fewer, larger positions also cut total open-cost drag from ~$4.10 to
-~$1.60 per full book.
+**Why test runs two slots, not five.** On a $100 book a slice must be big enough
+for its fee income to cover the *fixed* ~$0.60 one-time open cost. At 5 slots the
+model's mid answer sized ~$12.80, which scored ~0.3× on deep books — refused
+every tick. At 2 slots the same answer sizes ~$32, which clears the floor on
+mid-depth pools. Fewer, larger positions also cut total open-cost drag from
+~$4.10 to ~$1.60 per full book. Prod's 5 slots on an $800 book do not have this
+problem — the same answer sizes ~$160, so the floor is not in play.
 
 `min_position_usd` is **$12** — it must sit at or below the model's *smallest
 non-zero* Score level, or the model's answer can never clear the floor. The

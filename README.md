@@ -42,25 +42,39 @@ keeps the desk running — the model is an advisor, never a hard requirement.
 
 ## Run modes
 
-Two profiles, selected by `$JEV_MODE` — read at import, so it drives the routine
-defaults *and* the dashboard:
-
-| Mode | Book | Slots | Min slice | Per-pool cap | Use |
-|---|---|---|---|---|---|
-| `test` *(default)* | 100 USDC | 2 | 12.0 | 0.50 | organizers, constrained testing |
-| `prod` | 800 USDC | 5 | 100.0 | 0.20 | the 48-hour competition envelope |
+Two profiles. Switching is **one command**:
 
 ```bash
-JEV_MODE=prod python dashboard/live_bridge.py 8099   # competition envelope
+python agents/jev/set_mode.py prod   # 800 USDC / 5 slots / 100.0 floor
+python agents/jev/set_mode.py test   # 100 USDC / 2 slots /  12.0 floor
+python agents/jev/set_mode.py        # report the current mode, change nothing
+```
+
+Then restart the desk. The command rewrites `mode:` in `strategy.md` **and** the
+values it couples, so they cannot drift apart:
+
+| Mode | Book | Slots | Min slice | Per-pool cap | Risk ceiling | Use |
+|---|---|---|---|---|---|---|
+| `test` *(default)* | 100 USDC | 2 | 12.0 | 0.50 | 100 | organizers, constrained testing |
+| `prod` | 800 USDC | 5 | 100.0 | 0.20 | 800 | the 48-hour competition envelope |
+
+`_jev_math` reads `strategy.md`'s `mode:` key at import, so the routine defaults
+and the dashboard both follow — nothing else needs editing. `$JEV_MODE` overrides
+the file per process, for an organizer who would rather pin a profile from the
+env:
+
+```bash
+JEV_MODE=prod python dashboard/live_bridge.py 8099
 ```
 
 The book, the slot budget and the per-position floor move **together** on
 purpose: a 2-slot budget on an 800 USDC book would open $400 walls, and a 5-slot
-budget on a 100 USDC book would open dust under the fee-vs-cost floor. An
-unrecognised name falls back to `test` rather than raising, so a typo cannot take
-the desk down mid-run. Profiles live in `MODE_PROFILES` in
-`agents/jev/routines/_jev_math.py`; `mode_profile()` resolves one, and
-`strategy.md`'s `mode` key records which profile the desk is seeded with.
+budget on a 100 USDC book would open dust under the fee-vs-cost floor. The risk
+ceiling moves with them — sit it below the largest slice the cap permits and
+Condor's risk gate refuses every open the mode just authorised. An unrecognised
+mode name falls back to `test` rather than raising, so a typo cannot take the
+desk down mid-run. Profiles live in `MODE_PROFILES` in
+`agents/jev/routines/_jev_math.py`.
 
 ## Run the tests
 

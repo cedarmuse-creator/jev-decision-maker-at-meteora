@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import math
 import os
+import re
+from pathlib import Path
 from typing import Iterable
 
 # ------------------------------------------------------------------ run modes
@@ -43,8 +45,44 @@ MODE_PROFILES: dict[str, dict] = {
 }
 
 
+_STRATEGY_MODE: str | None = None
+
+
+def strategy_mode() -> str:
+    """The `mode:` key from the desk strategy file, or "" if it is unreadable.
+
+    This file is the operator's single switch — set `mode: prod` and restart.
+    Only the YAML frontmatter is read: the body mentions modes in prose, and a
+    stray `mode:` there must not silently pick the profile.
+    """
+    global _STRATEGY_MODE
+    if _STRATEGY_MODE is None:
+        path = (Path(__file__).resolve().parents[1]
+                / "strategies" / "jev_desk" / "strategy.md")
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            text = ""
+        parts = text.split("---")
+        front = parts[1] if len(parts) >= 3 else ""
+        m = re.search(r"^\s*mode:\s*[\"']?([A-Za-z_-]+)", front, re.MULTILINE)
+        _STRATEGY_MODE = m.group(1).strip().lower() if m else ""
+    return _STRATEGY_MODE
+
+
 def _mode_key(mode: str | None = None) -> str:
-    return str(mode or os.environ.get("JEV_MODE") or DEFAULT_MODE).strip().lower()
+    """Resolve the active mode name.
+
+    Precedence: an explicit argument, then $JEV_MODE (so organizers can pin a
+    profile per process), then the strategy file's `mode:` key, then the default.
+    The file fallback is what makes switching a single edit.
+    """
+    if mode and str(mode).strip():
+        return str(mode).strip().lower()
+    env = os.environ.get("JEV_MODE")
+    if env and env.strip():
+        return env.strip().lower()
+    return strategy_mode() or DEFAULT_MODE
 
 
 def is_known_mode(mode: str | None = None) -> bool:

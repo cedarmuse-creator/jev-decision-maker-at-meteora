@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import sys
 from pathlib import Path
 
@@ -18,7 +19,7 @@ from _jev_math import (  # noqa: E402
     MAX_WIDTH_PCT, MARGINAL_SCALE, WORTH_MARGIN, WORTH_MARGIN_FLOOR,
     RACE_USD, MIN_POSITION_USD, MAX_POSITIONS, PORTFOLIO_PCT_MAX,
     MODE, MODE_IS_KNOWN, MODE_LABEL, MODE_PROFILES, MODE_TEST, MODE_PROD,
-    DEFAULT_MODE, mode_profile, is_known_mode,
+    DEFAULT_MODE, mode_profile, is_known_mode, strategy_mode, _mode_key,
 )
 
 # The TEST profile's envelope, pinned. The sizing tests assert specific worth
@@ -587,6 +588,76 @@ def test_prod_profile_is_the_competition_envelope():
     assert prod["book_usd"] == 800.0
     assert 3 <= prod["max_positions"] <= 5
     assert MODE_PROFILES[MODE_TEST]["book_usd"] == 100.0
+
+
+def test_strategy_file_supplies_the_mode(monkeypatch):
+    """The strategy file's `mode:` key is the operator's single switch.
+
+    `_jev_math` reads it at import, so nothing else has to be kept in step by
+    hand — that is the whole point of the profile.
+    """
+    assert strategy_mode() in MODE_PROFILES, strategy_mode()
+    monkeypatch.delenv("JEV_MODE", raising=False)
+    assert _mode_key() == strategy_mode()
+    assert mode_profile()["label"] == MODE_PROFILES[strategy_mode()]["label"]
+
+
+def test_env_overrides_the_strategy_file(monkeypatch):
+    """$JEV_MODE wins, so an organizer can pin a profile per process."""
+    other = MODE_PROD if strategy_mode() == MODE_TEST else MODE_TEST
+    monkeypatch.setenv("JEV_MODE", other)
+    assert _mode_key() == other
+    assert mode_profile()["label"] == MODE_PROFILES[other]["label"]
+
+
+def test_set_mode_targets_cover_every_coupled_value():
+    """set_mode.py must rewrite every value the mode couples.
+
+    If it misses one, flipping modes leaves that value behind — exactly the
+    drift the script exists to prevent. `max_position_size_quote` matters most:
+    sit it below the sizing math's ceiling and Condor's risk gate refuses every
+    slice the mode just authorised.
+    """
+    root = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location("jev_set_mode", root / "set_mode.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    for mode in (MODE_TEST, MODE_PROD):
+        prof = MODE_PROFILES[mode]
+        t = mod._targets(mode)
+        assert set(t) == {"mode", "total_amount_quote", "max_open_executors",
+                          "min_position_usd", "portfolio_pct_max",
+                          "max_position_size_quote"}, mode
+        assert t["mode"] == mode
+        assert int(t["total_amount_quote"]) == int(prof["book_usd"])
+        assert int(t["max_open_executors"]) == int(prof["max_positions"])
+        assert float(t["min_position_usd"]) == float(prof["min_position_usd"])
+        assert float(t["portfolio_pct_max"]) == 1.0 / int(prof["max_positions"])
+        # The risk ceiling must clear the largest slice the cap permits.
+        ceiling = int(t["total_amount_quote"]) * float(t["portfolio_pct_max"])
+        assert float(t["max_position_size_quote"]) >= ceiling, mode
+
+
+def test_shipped_strategy_file_matches_its_own_mode():
+    """The committed strategy.md must not be internally inconsistent.
+
+    A `mode: prod` header sitting over test-mode numbers is the drift this
+    guards, and it is invisible until the desk sizes a position wrongly.
+    """
+    root = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location("jev_set_mode2", root / "set_mode.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    text = (root / "strategies" / "jev_desk" / "strategy.md").read_text(encoding="utf-8")
+    front = text.split("---")[1]
+    want = mod._targets(strategy_mode())
+    import re as _re
+    for key, value in want.items():
+        m = _re.search(rf"^[ \t]*{_re.escape(key)}:[ \t]*(\S+)", front, _re.MULTILINE)
+        assert m, f"{key} missing from the strategy frontmatter"
+        assert m.group(1) == value, f"{key}: file has {m.group(1)}, mode wants {value}"
 
 
 if __name__ == "__main__":
