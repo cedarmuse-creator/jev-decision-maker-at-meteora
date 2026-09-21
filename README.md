@@ -142,8 +142,3 @@ JEV_SIBLING_MARKERS="slug_a,slug_b" JEV_PROVIDER_STRINGS="provider_a" \
   python agents/jev/tests/validate_agent.py
 # or drop .sibling-markers / .provider-strings at the repo root (gitignored)
 ```
-
-## Standalone
-
-JEV is a standalone entry. It does not reference, import from, or share
-templates with any other agent.
