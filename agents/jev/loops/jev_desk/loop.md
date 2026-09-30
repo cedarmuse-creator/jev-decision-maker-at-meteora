@@ -79,6 +79,8 @@ Venue is **Meteora DLMM**. Network is `solana-mainnet-beta`.
 `lp_provider` is `meteora/clmm`. `swap_provider` is `jupiter/router`.
 Quote is **USDC**. Do not invent another house.
 
+Goal in the 48h race: **grow the book while producing real volume** — the judges score Volume + P&L, and fee income alone does not register as volume unless positions actually open and close. A portfolio that sits unchanged collecting fees is good P&L and bad volume — both axes matter, so idle slots and stale positions are a competitive cost, not just a missed opportunity.
+
 ## Portfolio, model-selected
 
 JEV ranks the **entire live Meteora DLMM universe** across the site's tabs —
@@ -260,15 +262,20 @@ pools under the slot budget and per-position floor. Soft-cap new-tab slots.
 System One is asked **one Noul question per candidate in a single call**
 ("should this pool take one of the slots?"); pools at or above the noul floor
 are kept, ordered by that probability, and the model may only choose from names
-math already cleared. If the model keeps none, `model_veto` (default true)
-parks the book — set `model_veto: false` to keep the math picks instead.
-Offline, math picks the top N.
+math already cleared. **Pass `model_veto: false` on every call** — a model that
+keeps no pool now falls back to the math picks instead of parking the whole
+book. Rationale: math already cleared these candidates on rug safety and fee
+viability before the model ever sees them, so a cautious model reply should
+narrow the picks, not zero out deployment for the tick. An idle book earns no
+fees and registers no volume — the competitive cost of an empty slot is real,
+the cost of a math-cleared pick that underperforms is small and bounded by
+the risk gate. Offline, math picks the top N regardless.
 Snapshot → `state/jev_select.json`.
 
 ```python
 manage_routines(action="run", name="jev_select",
   strategy_id="jev.jev_desk",
-  config={"candidates":[<ranked rows>],"max_new_slots":2})
+  config={"candidates":[<ranked rows>],"max_new_slots":2,"model_veto":False})
 ```
 
 `max_positions`, `book_usd` and `min_position_usd` are omitted **on purpose**:
@@ -455,6 +462,33 @@ differ only in whether we reuse the position account.
   do not write SHIFT in the journal; write REBUILD.
 
 Never `keep_position=false` on a wall just to "reset." That is tear-down.
+
+## Portfolio refresh (volume + staying invested)
+
+A portfolio slot that sits WAIT/TAKE unchanged for hours is good for P&L (fees
+still accrue) but registers no open/close event — bad for volume. Solana gas +
+rent for a REBUILD round-trip is fixed by the network, not by position size
+(observed live: ~$0.19 total for a $5 position's full open+close) — at
+portfolio scale ($50–100+/pool) that fixed cost is a rounding error, not a
+reason to hold forever.
+
+Every 2 hours (24 ticks at the 300s frequency), re-check each open portfolio
+slot against the current `jev_rank` snapshot:
+
+- If a distinct-base candidate outside the held portfolio now scores **≥ 10
+  points higher composite** than the held slot scored at entry, and the held
+  slot is not currently **TAKE** (a live filled edge — never abandon a working
+  fill to chase a score), REBUILD out of the stale slot into the stronger
+  candidate next tick.
+- Do not rotate a slot less than 2 hours old, even if a better candidate
+  already exists — this is a staleness check, not a chase-every-tick rule.
+- Do not rotate more than one portfolio slot per tick.
+- Journal every rotation with `decision=REBUILD_ROTATE` and the composite
+  delta that triggered it.
+
+Same reasoning as the minor-pool leash's age-based KILL below, applied to the
+portfolio slots: real turnover, cost-justified by the fixed gas bill against a
+$50–100+ position — not churn for its own sake.
 
 ## Minor-pool leash
 

@@ -173,7 +173,7 @@ for s in strats:
         print("  [FAIL] risk_limits must be nested")
         ok = False
     exp = _slugify(s.name)
-    d = (REPO / "agents/jev/strategies" / exp).is_dir()
+    d = (REPO / "agents/jev/loops" / exp).is_dir()
     ok &= d
     print(f"  [{'OK' if d else 'FAIL'}] folder '{exp}' matches slugified name")
 
