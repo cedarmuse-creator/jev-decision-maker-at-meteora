@@ -10,7 +10,7 @@ One-sided walls, gated on the dynamic fee, dry-run by default.
 | Path | What |
 |---|---|
 | `AGENT.md` | Who JEV is, the decision verbs, safety invariants |
-| `strategies/jev_desk/strategy.md` | Hands — tick sequence, sizing, width, executors |
+| `loops/jev_desk/loop.md` | Hands — tick sequence, sizing, width, executors |
 | `routines/_jev_math.py` | Pure math: rug card, rank hard-gate, select, size, width, worth |
 | `routines/_jev_sdk.py` | TypeSafe System One client (Noul fan-out + Score), offline mock fallback |
 | `routines/jev_scan.py` | Meteora DLMM cross-tab universe |

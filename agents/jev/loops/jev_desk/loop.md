@@ -23,8 +23,8 @@ default_config:
   # the coupled values below in one go, then restart the desk. Editing `mode`
   # alone would leave those values behind. $JEV_MODE overrides the file per
   # process, for an organizer who would rather pin a profile from the env.
-  mode: test
-  total_amount_quote: 100
+  mode: prod
+  total_amount_quote: 800
   quote_asset: USDC
   # Pinned so the dashboard's Start dialog seeds the right server. Left blank it
   # resolved to a nonexistent "local" and the loop could not reach the venue.
@@ -39,7 +39,7 @@ default_config:
   # UI-started loop print its intended orders and never place them.
   dry_run_writes: false
   # Model sizing (JEV Score -> % of book). Overridden live by jev_size.
-  portfolio_pct_max: 0.50
+  portfolio_pct_max: 0.20
   major_pct_min: 0.30
   major_pct_max: 0.45
   minor_pct_max: 0.20
@@ -48,8 +48,8 @@ default_config:
   worth_margin: 1.2
   # Portfolio / discovery. These track the run mode above — test: 2 slots /
   # 12.0 floor / 0.50 cap; prod: 5 slots / 100.0 floor / 0.20 cap.
-  max_open_executors: 2
-  min_position_usd: 12.0
+  max_open_executors: 5
+  min_position_usd: 50.0
   max_new_slots: 2
   enrich_top_k: 12
   scan_tabs: ["top", "trending", "new", "rwa"]
@@ -58,8 +58,8 @@ default_config:
   min_vol: 5000
   max_bin_step: 400
   risk_limits:
-    max_position_size_quote: 100
-    max_open_executors: 2
+    max_position_size_quote: 800
+    max_open_executors: 5
     max_drawdown_pct: 15
     max_leverage: 1
     require_triple_barrier: false

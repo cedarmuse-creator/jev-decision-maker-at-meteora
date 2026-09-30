@@ -23,7 +23,7 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-STRATEGY = HERE / "strategies" / "jev_desk" / "strategy.md"
+STRATEGY = HERE / "loops" / "jev_desk" / "loop.md"
 
 
 def _load_math():

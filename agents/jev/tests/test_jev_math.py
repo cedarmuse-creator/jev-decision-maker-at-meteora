@@ -668,7 +668,7 @@ def test_shipped_strategy_file_matches_its_own_mode():
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
 
-    text = (root / "strategies" / "jev_desk" / "strategy.md").read_text(encoding="utf-8")
+    text = (root / "loops" / "jev_desk" / "loop.md").read_text(encoding="utf-8")
     front = text.split("---")[1]
     want = mod._targets(strategy_mode())
     import re as _re

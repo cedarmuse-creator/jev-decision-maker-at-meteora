@@ -62,7 +62,7 @@ def strategy_mode() -> str:
     global _STRATEGY_MODE
     if _STRATEGY_MODE is None:
         path = (Path(__file__).resolve().parents[1]
-                / "strategies" / "jev_desk" / "strategy.md")
+                / "loops" / "jev_desk" / "loop.md")
         try:
             text = path.read_text(encoding="utf-8", errors="replace")
         except OSError:
@@ -111,7 +111,7 @@ _PROFILE = mode_profile(MODE)
 # Model-sizing envelope (JEV Score -> % of book). Overridden live by jev_size.
 # RACE_USD is the desk's book, taken from the active run mode. Code default =
 # the desk's live book, so a config-less run sizes slices the wallet can fund.
-# The book is also set in strategies/jev_desk/strategy.md (total_amount_quote).
+# The book is also set in loops/jev_desk/loop.md (total_amount_quote).
 RACE_USD = float(_PROFILE["book_usd"])
 MAX_POSITIONS = int(_PROFILE["max_positions"])   # slot budget the cap derives from
 MIN_POSITION_USD = float(_PROFILE["min_position_usd"])
