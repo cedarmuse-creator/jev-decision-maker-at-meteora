@@ -27,24 +27,82 @@ from typing import Iterable
 # jev_gate config defaults, and the dashboard's book and slot count.
 MODE_TEST = "test"
 MODE_PROD = "prod"
+MODE_PNL_RACE = "pnl_race"
 DEFAULT_MODE = MODE_TEST
+
+# Split-book race envelope. Volume arm = Binance USD1 stable desk; P&L arm = this
+# Meteora desk. Only pnl_race splits the $800; test/prod keep a single book.
+RACE_ENVELOPE_USD = 800.0
+VOLUME_ARM_PCT = 0.60
+PNL_ARM_PCT = 0.40
 
 MODE_PROFILES: dict[str, dict] = {
     MODE_TEST: {
         "label": "TEST",
         "book_usd": 100.0,
+        "total_envelope_usd": 100.0,
+        "volume_arm_usd": 0.0,
+        "pnl_arm_usd": 100.0,
         "max_positions": 2,
         "min_position_usd": 12.0,
+        "select_conf_floor": 0.55,
+        "worth_margin": 1.2,
+        "require_momentum_pct": 0.0,
+        "portfolio_rotate_hours": 2.0,
+        "minor_max_sec": 3600,
+        "max_new_slots": 2,
+        "stop_loss_pct": 0.05,
+        "trail_activation_pct": 0.03,
+        "trail_delta_pct": 0.02,
+        "max_drawdown_pct": 15.0,
+        "scan_tabs": ["top", "trending", "new", "rwa"],
     },
     MODE_PROD: {
         "label": "PROD",
         "book_usd": 800.0,
+        "total_envelope_usd": 800.0,
+        "volume_arm_usd": 0.0,
+        "pnl_arm_usd": 800.0,
         "max_positions": 5,
-        # Must sit at or below the model's SMALLEST non-zero Score level, or
-        # that answer can never clear the floor and the desk silently loses an
-        # option. Level 1 = 0.32 x cap x book = 0.32 x (800/5) = $51.20 here
-        # ($16.00 in test), so $50 keeps all three levels live.
         "min_position_usd": 50.0,
+        "select_conf_floor": 0.55,
+        "worth_margin": 1.2,
+        "require_momentum_pct": 0.0,
+        "portfolio_rotate_hours": 2.0,
+        "minor_max_sec": 3600,
+        "max_new_slots": 2,
+        "stop_loss_pct": 0.04,
+        "trail_activation_pct": 0.025,
+        "trail_delta_pct": 0.015,
+        "max_drawdown_pct": 15.0,
+        "scan_tabs": ["top", "trending", "new", "rwa"],
+    },
+    MODE_PNL_RACE: {
+        "label": "PNL_RACE",
+        "book_usd": 320.0,
+        "total_envelope_usd": 800.0,
+        "volume_arm_usd": 480.0,
+        "pnl_arm_usd": 320.0,
+        "max_positions": 2,
+        # Floor must fit 2 slots on $320 and still clear open-cost after trim.
+        "min_position_usd": 40.0,
+        "select_conf_floor": 0.60,
+        "worth_margin": 1.35,
+        # Patient, but not permanent-SIT in quiet tape: 3% 24h move is enough.
+        "require_momentum_pct": 3.0,
+        "portfolio_rotate_hours": 0.0,
+        "minor_max_sec": 0,
+        "max_new_slots": 1,
+        "stop_loss_pct": 0.03,
+        "trail_activation_pct": 0.025,
+        "trail_delta_pct": 0.015,
+        # Absolute P&L-arm stop: $90 USDC mark loss on the Meteora book (not % of $800).
+        "stop_loss_usd": 90.0,
+        "max_drawdown_pct": 28.0,  # ~90/320 — keep in sync with stop_loss_usd
+        "scan_tabs": ["top", "trending", "rwa"],
+        "volume_pair": "FDUSD-USDT",
+        "volume_pair_fallback": "USD1-USDT",
+        "volume_controller": "jev_quote_gate",
     },
 }
 
@@ -124,8 +182,8 @@ MINOR_PCT_MAX = 0.20
 # insufficient funds (5 x 25% = 125% of the book).
 PORTFOLIO_PCT_MAX = 1.0 / MAX_POSITIONS
 TRUST_NOUL_FLOOR = 0.30       # rug noul below this -> size 0, SIT
-SELECT_CONF_FLOOR = 0.55      # JEV Choice confidence floor for portfolio picks
-MINOR_MAX_SEC = 3600
+SELECT_CONF_FLOOR = float(_PROFILE.get("select_conf_floor", 0.55))
+MINOR_MAX_SEC = int(_PROFILE.get("minor_max_sec", 3600))  # 0 = age kill off
 
 MIN_OUTSIDE_SLOTS = 3
 MAX_BINS = 69
@@ -138,9 +196,24 @@ FEE_FLOOR_PCT = 0.02  # min Meteora dynamic (volatility) fee % to justify a re-s
 # position is trimmed instead of refused (the rug card, fee floor and the
 # model's read are the other criteria the gate must not outrank); below the
 # floor the fee does not pay for the position at all.
-WORTH_MARGIN = 1.2
+WORTH_MARGIN = float(_PROFILE.get("worth_margin", 1.2))
 WORTH_MARGIN_FLOOR = 0.5
 MARGINAL_SCALE = 0.75
+REQUIRE_MOMENTUM_PCT = float(_PROFILE.get("require_momentum_pct", 0.0))
+PORTFOLIO_ROTATE_HOURS = float(_PROFILE.get("portfolio_rotate_hours", 2.0))
+MAX_NEW_SLOTS = int(_PROFILE.get("max_new_slots", 2))
+STOP_LOSS_PCT = float(_PROFILE.get("stop_loss_pct", 0.03))
+TRAIL_ACTIVATION_PCT = float(_PROFILE.get("trail_activation_pct", 0.025))
+TRAIL_DELTA_PCT = float(_PROFILE.get("trail_delta_pct", 0.015))
+MAX_DRAWDOWN_PCT = float(_PROFILE.get("max_drawdown_pct", 15.0))
+PNL_STOP_LOSS_USD = float(_PROFILE.get("stop_loss_usd", 0.0))
+VOLUME_ARM_USD = float(_PROFILE.get("volume_arm_usd", 0.0))
+PNL_ARM_USD = float(_PROFILE.get("pnl_arm_usd", RACE_USD))
+TOTAL_ENVELOPE_USD = float(_PROFILE.get("total_envelope_usd", RACE_USD))
+VOLUME_PAIR = str(_PROFILE.get("volume_pair", "FDUSD-USDT"))
+VOLUME_PAIR_FALLBACK = str(_PROFILE.get("volume_pair_fallback", "USD1-USDT"))
+VOLUME_CONTROLLER = str(_PROFILE.get("volume_controller", "jev_quote_gate"))
+SCAN_TABS = list(_PROFILE.get("scan_tabs", ["top", "trending", "new", "rwa"]))
 # Headroom over the floor for a MARGINAL trim. The caller recomputes fee and
 # width on the trimmed amount, and a slice tuned to land exactly on the floor
 # re-evaluates a hair under it -- flipping MARGINAL to NO and killing a position
@@ -593,15 +666,16 @@ def jev_select(candidates: list[dict], book_usd: float = RACE_USD,
     if not chosen:
         return {"verdict": "SIT", "chosen": [], "count": 0,
                 "reason": "no clean candidate clears trust floor"}
-    # Reserve the floor: if the book can't fund max_positions at the floor,
-    # trim to what fits (largest first).
+    # Reserve the floor: use an effective floor so a tight free book still
+    # funds at least one slot instead of permanent SIT.
+    floor = effective_min_position_usd(book_usd, max_positions, min_position_usd)
     fit = max_positions
-    while fit > 0 and book_usd / fit < min_position_usd:
+    while fit > 0 and book_usd / fit < floor:
         fit -= 1
     chosen = chosen[:max(fit, 0)]
     if not chosen:
         return {"verdict": "SIT", "chosen": [], "count": 0,
-                "reason": f"book {book_usd:.0f} < floor {min_position_usd:.0f} per slot"}
+                "reason": f"book {book_usd:.0f} < effective floor {floor:.0f} per slot"}
     return {"verdict": "SELECT", "chosen": chosen, "count": len(chosen),
             "reason": f"portfolio of {len(chosen)} distinct-base pools"}
 
@@ -616,6 +690,7 @@ def jev_size(*, role: str, tvl: float, vol24: float, bin_step: float,
              worth_floor: float = WORTH_MARGIN_FLOOR,
              momentum_pct: float | None = None,
              momentum_short_pct: float | None = None,
+             require_momentum_pct: float | None = None,
              base_mint: str = "", base_symbol: str = "",
              quote_mint: str = USDC_MINT, quote_symbol: str = "USDC") -> dict:
     """Model Score: position % of the book + the range width JEV chooses.
@@ -652,6 +727,21 @@ def jev_size(*, role: str, tvl: float, vol24: float, bin_step: float,
                 "worth": False, "worth_tier": "NO", "worth_ratio": 0.0,
                 "open_cost": 0.0, "expected_fee": 0.0, "size_usd": 0.0,
                 "reason": "no tvl -> SIT"}
+
+    # Patient P&L: refuse new size without enough upside momentum (pnl_race).
+    req_m = REQUIRE_MOMENTUM_PCT if require_momentum_pct is None else float(require_momentum_pct)
+    if req_m > 0:
+        m24 = 0.0 if momentum_pct is None else float(momentum_pct)
+        m6 = None if momentum_short_pct is None else float(momentum_short_pct)
+        if m24 < req_m or (m6 is not None and m6 <= -5.0):
+            return {"pct": 0.0, "score": 0.0, "width_pct": 0.0, "bin_count": 0,
+                    "worth": False, "worth_tier": "NO", "worth_ratio": 0.0,
+                    "open_cost": 0.0, "expected_fee": 0.0, "size_usd": 0.0,
+                    "momentum_pct": momentum_pct, "trend_credit": 0.0,
+                    "reason": (
+                        f"momentum {m24:.2f}% < require {req_m:.2f}% "
+                        f"(or short {m6}) -> wait for move, SIT"
+                    )}
 
     # Depth factor: log-scaled so a $5M book isn't 100x a $50k book.
     depth = math.log10(max(tvl, 1.0)) / 7.0          # ~0..1 across $1..$10M
@@ -700,6 +790,26 @@ def jev_size(*, role: str, tvl: float, vol24: float, bin_step: float,
                 momentum_pct=momentum_pct, momentum_short_pct=momentum_short_pct,
             )
 
+    size_usd = round(pct * book_usd, 2)
+    # Unstick: worth-trim can leave a positive but sub-floor slice that the
+    # routine then refuses forever. If the book can fund the floor once, lift.
+    floor = effective_min_position_usd(book_usd, MAX_POSITIONS, MIN_POSITION_USD)
+    if 0 < size_usd < floor and book_usd + 1e-9 >= floor and width.get("worth"):
+        pct = min(1.0, floor / book_usd) if book_usd > 0 else 0.0
+        pct = _role_clamp(role, pct, pct_max)
+        size_usd = round(pct * book_usd, 2)
+        width = jev_width(
+            tvl=tvl, vol24=vol24, bin_step=bin_step,
+            dynamic_fee_pct=dynamic_fee_pct, amount=max(size_usd, 1.0),
+            vol_daily_pct=vol_daily_pct, sol_usd=sol_usd, horizon_days=horizon,
+            margin=worth_margin, worth_floor=worth_floor,
+            momentum_pct=momentum_pct, momentum_short_pct=momentum_short_pct,
+        )
+    # sol_usd=0 makes open_cost $0 and can pass junk; treat missing SOL mark as
+    # a soft default so viability is not accidentally free.
+    if sol_usd <= 0 and size_usd > 0 and float(width.get("open_cost") or 0) <= 0:
+        width = dict(width)
+        width["open_cost"] = round(open_cost_usd(150.0), 4)
     return {"pct": round(pct, 3), "score": score, "width_pct": width["width_pct"],
             "bin_count": width["bin_count"], "worth": width["worth"],
             "worth_tier": width.get("worth_tier"), "worth_ratio": width.get("worth_ratio"),
@@ -708,7 +818,8 @@ def jev_size(*, role: str, tvl: float, vol24: float, bin_step: float,
             "income": width.get("income", width["expected_fee"]),
             "trend_credit": width.get("trend_credit", 0.0),
             "momentum_pct": momentum_pct,
-            "size_usd": round(pct * book_usd, 2),
+            "size_usd": size_usd,
+            "min_position_usd": floor,
             "reason": f"depth {depth:.2f} heat {heat:.2f} clean {clean:.2f} | {width['reason']}"}
 
 
@@ -741,12 +852,165 @@ def pool_verb(*, has_position: bool, filled_buy: bool, position_side: str,
 
 def minor_exit(*, rug_noul: float, age_sec: float, flag_after: bool = False,
                kill_pct: float = 10.0, max_sec: int = MINOR_MAX_SEC) -> str:
-    """First minor-pool leash that fires. HOLD means stay."""
+    """First minor-pool leash that fires. HOLD means stay.
+
+    `max_sec <= 0` disables the age kill (pnl_race: no timer exits).
+    """
     if flag_after or rug_noul < TRUST_NOUL_FLOOR:
         return KILL
-    if age_sec >= max_sec:
+    if max_sec > 0 and age_sec >= max_sec:
         return KILL
     return HOLD
+
+
+def position_risk_exit(
+    *,
+    entry_price: float,
+    price: float,
+    peak_price: float | None = None,
+    stop_loss_pct: float = STOP_LOSS_PCT,
+    trail_activation_pct: float = TRAIL_ACTIVATION_PCT,
+    trail_delta_pct: float = TRAIL_DELTA_PCT,
+    enabled: bool = True,
+) -> dict:
+    """Mark-to-market stop-loss / trailing-stop for filled long inventory.
+
+    After a BUY wall fills (and while a SELL wall rests) JEV is long the base.
+    Measure pnl vs entry; peak is the high-water mark since entry.
+
+    action: HOLD | KILL_SL | KILL_TRAIL. Tick must stop_executor on KILL_*.
+    """
+    if not enabled or entry_price <= 0 or price <= 0:
+        return {
+            "action": HOLD,
+            "pnl_pct": 0.0,
+            "peak_pnl_pct": 0.0,
+            "peak_price": peak_price or entry_price,
+            "reason": "risk barriers off or bad px",
+        }
+    peak = max(
+        float(peak_price) if peak_price and peak_price > 0 else entry_price,
+        price,
+        entry_price,
+    )
+    pnl_pct = (price - entry_price) / entry_price
+    peak_pnl = (peak - entry_price) / entry_price
+    if pnl_pct <= -abs(stop_loss_pct):
+        return {
+            "action": "KILL_SL",
+            "pnl_pct": round(pnl_pct, 6),
+            "peak_pnl_pct": round(peak_pnl, 6),
+            "peak_price": peak,
+            "reason": f"stop_loss hit pnl={pnl_pct:.2%} <= -{abs(stop_loss_pct):.2%}",
+        }
+    if peak_pnl >= abs(trail_activation_pct):
+        drop_from_peak = (peak - price) / peak if peak > 0 else 0.0
+        if drop_from_peak >= abs(trail_delta_pct):
+            return {
+                "action": "KILL_TRAIL",
+                "pnl_pct": round(pnl_pct, 6),
+                "peak_pnl_pct": round(peak_pnl, 6),
+                "peak_price": peak,
+                "reason": (
+                    f"trail hit peak_pnl={peak_pnl:.2%} "
+                    f"drop_from_peak={drop_from_peak:.2%} "
+                    f">= {abs(trail_delta_pct):.2%}"
+                ),
+            }
+    return {
+        "action": HOLD,
+        "pnl_pct": round(pnl_pct, 6),
+        "peak_pnl_pct": round(peak_pnl, 6),
+        "peak_price": peak,
+        "reason": "within barriers",
+    }
+
+
+def allocation_split(mode: str | None = None) -> dict:
+    """Full split-book allocation for the active (or named) mode."""
+    prof = mode_profile(mode)
+    total = float(prof.get("total_envelope_usd", prof["book_usd"]))
+    vol = float(prof.get("volume_arm_usd", 0.0))
+    pnl = float(prof.get("pnl_arm_usd", prof["book_usd"]))
+    stop_usd = float(prof.get("stop_loss_usd", 0.0))
+    return {
+        "total_envelope_usd": total,
+        "volume_arm_usd": vol,
+        "pnl_arm_usd": pnl,
+        "volume_arm_pct": (vol / total) if total else 0.0,
+        "pnl_arm_pct": (pnl / total) if total else 0.0,
+        "book_usd": float(prof["book_usd"]),
+        "pnl_stop_loss_usd": stop_usd,
+        "volume_pair": str(prof.get("volume_pair", "FDUSD-USDT")),
+        "volume_pair_fallback": str(prof.get("volume_pair_fallback", "USD1-USDT")),
+        "volume_controller": str(prof.get("volume_controller", "jev_quote_gate")),
+        "mode": _mode_key(mode),
+        "label": prof["label"],
+        "organizer_blurb": (
+            f"Fund ${vol:.0f} on Binance {prof.get('volume_pair', 'FDUSD-USDT')} "
+            f"({prof.get('volume_controller', 'jev_quote_gate')}; fallback "
+            f"{prof.get('volume_pair_fallback', 'USD1-USDT')}) and ${pnl:.0f} USDC "
+            f"on Meteora DLMM. Total ${total:.0f}. P&L-arm stop ${stop_usd:.0f} USDC."
+        ),
+    }
+
+
+def effective_min_position_usd(
+    book_usd: float,
+    max_positions: int = MAX_POSITIONS,
+    configured_floor: float = MIN_POSITION_USD,
+    absolute_floor: float = 20.0,
+) -> float:
+    """Per-slot floor that still allows at least one open on this book.
+
+    Prevents permanent SIT when configured floor > free book (common after
+    partial fills or when only one slot is fundable).
+    """
+    book = max(float(book_usd), 0.0)
+    slots = max(int(max_positions or 1), 1)
+    floor = max(float(configured_floor), 0.0)
+    if book <= 0:
+        return floor
+    # Always allow a single-slot open if the book clears absolute_floor.
+    per_slot_cap = book / slots
+    single = book
+    return max(absolute_floor, min(floor, per_slot_cap, single))
+
+
+def portfolio_stop_usd(
+    *,
+    entry_nav_usd: float,
+    current_nav_usd: float,
+    stop_usd: float | None = None,
+    enabled: bool = True,
+) -> dict:
+    """Absolute USDC stop on the Meteora P&L sleeve (mark vs session entry NAV).
+
+    Default stop is profile `stop_loss_usd` ($90 in pnl_race). This is NOT
+    10% of the $800 race envelope and NOT a per-pool percent barrier.
+    """
+    limit = float(PNL_STOP_LOSS_USD if stop_usd is None else stop_usd)
+    if not enabled or limit <= 0 or entry_nav_usd <= 0:
+        return {
+            "action": HOLD,
+            "loss_usd": 0.0,
+            "stop_usd": limit,
+            "reason": "portfolio stop off or no entry NAV",
+        }
+    loss = float(entry_nav_usd) - float(current_nav_usd)
+    if loss + 1e-9 >= limit:
+        return {
+            "action": "KILL_PORTFOLIO",
+            "loss_usd": round(loss, 4),
+            "stop_usd": limit,
+            "reason": f"P&L-arm mark loss ${loss:.2f} >= stop ${limit:.2f} USDC",
+        }
+    return {
+        "action": HOLD,
+        "loss_usd": round(loss, 4),
+        "stop_usd": limit,
+        "reason": "within P&L-arm dollar stop",
+    }
 
 
 def haircut_base(executed_base: float, haircut: float = 0.995) -> float:

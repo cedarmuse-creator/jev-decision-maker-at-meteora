@@ -5,9 +5,10 @@ The book, the slot budget and the per-position floor are coupled, and the desk
 seeds its Start dialog from `strategy.md`. Editing five numbers by hand is how
 they drift apart, so this writes them together from the profile in `_jev_math`.
 
-    python agents/jev/set_mode.py prod     # 800 USDC / 5 slots / 50.0 floor
-    python agents/jev/set_mode.py test     # 100 USDC / 2 slots /  12.0 floor
-    python agents/jev/set_mode.py          # report the current mode, change nothing
+    python agents/jev/set_mode.py prod       # 800 USDC / 5 slots / 50 floor (full book)
+    python agents/jev/set_mode.py test       # 100 USDC / 2 slots / 12 floor
+    python agents/jev/set_mode.py pnl_race   # split-book: P&L $320/2 slots + volume $480
+    python agents/jev/set_mode.py            # report the current mode, change nothing
 
 Then restart the desk: `_jev_math` reads the file's `mode:` key at import, so the
 routine defaults and the dashboard both follow. `$JEV_MODE` still overrides the
@@ -62,6 +63,10 @@ def _targets(mode: str) -> dict[str, str]:
     prof = M.MODE_PROFILES[mode]
     slots = int(prof["max_positions"])
     book = int(prof["book_usd"])
+    dd = float(prof.get("max_drawdown_pct", 15))
+    conf = float(prof.get("select_conf_floor", 0.55))
+    worth = float(prof.get("worth_margin", 1.2))
+    new_slots = int(prof.get("max_new_slots", 2))
     return {
         "mode": mode,
         "total_amount_quote": str(book),
@@ -72,6 +77,11 @@ def _targets(mode: str) -> dict[str, str]:
         # math is allowed to produce, or the risk gate refuses every slice the
         # mode just authorised. Cap x book <= book, so the book is the ceiling.
         "max_position_size_quote": str(book),
+        "max_drawdown_pct": str(int(dd) if dd == int(dd) else dd),
+        "pnl_stop_loss_usd": str(int(float(prof.get("stop_loss_usd", 0) or 0))),
+        "select_conf_floor": f"{conf:.2f}",
+        "worth_margin": (str(int(worth)) if worth == int(worth) else f"{worth:.2f}"),
+        "max_new_slots": str(new_slots),
     }
 
 
@@ -83,10 +93,21 @@ def report() -> int:
     print(f"  $JEV_MODE   : {os.environ.get('JEV_MODE') or '(unset)'}")
     print(f"  active mode : {active} ({prof['label']})"
           f"{'' if M.MODE_IS_KNOWN else '  <- unknown, fell back'}")
-    print(f"  book        : {prof['book_usd']:.0f} USDC")
+    print(f"  book        : {prof['book_usd']:.0f} USDC  (this desk / P&L arm)")
     print(f"  slots       : {prof['max_positions']}")
     print(f"  min slice   : {prof['min_position_usd']:.1f}")
     print(f"  per-pool cap: {1.0 / prof['max_positions']:.2f}")
+    split = M.allocation_split(active)
+    print(f"  envelope    : {split['total_envelope_usd']:.0f}  "
+          f"volume_arm={split['volume_arm_usd']:.0f}  pnl_arm={split['pnl_arm_usd']:.0f}")
+    print(f"  conf floor  : {prof.get('select_conf_floor')}  worth_margin={prof.get('worth_margin')}  "
+          f"mom>={prof.get('require_momentum_pct')}%")
+    print(f"  barriers    : SL {float(prof.get('stop_loss_pct', 0))*100:.1f}%  "
+          f"trail act {float(prof.get('trail_activation_pct', 0))*100:.1f}% / "
+          f"delta {float(prof.get('trail_delta_pct', 0))*100:.1f}%  "
+          f"sleeve_stop ${float(prof.get('stop_loss_usd', 0)):.0f} USDC")
+    print(f"  volume pair : {prof.get('volume_pair', 'FDUSD-USDT')}  "
+          f"fallback {prof.get('volume_pair_fallback', 'USD1-USDT')}")
     print()
     print("Available modes: " + ", ".join(sorted(M.MODE_PROFILES)))
     return 0

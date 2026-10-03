@@ -12,19 +12,18 @@ skills: []
 default_config:
   frequency_sec: 300
   execution_mode: loop
-  # RUN MODE — test | prod. THIS KEY IS THE SWITCH: `_jev_math` reads it at
-  # import, so the routine defaults and the dashboard both follow. The book, the
-  # slot budget and the per-position floor move TOGETHER:
+  # RUN MODE — test | prod | pnl_race. THIS KEY IS THE SWITCH: `_jev_math`
+  # reads it at import, so the routine defaults and the dashboard both follow.
   #
-  #   test — 100 USDC / 2 slots / 12.0 floor   organizers + constrained testing
-  #   prod — 800 USDC / 5 slots / 50.0 floor   the 48-hour competition envelope
+  #   test     — 100 USDC / 2 slots / 12 floor
+  #   prod     — 800 USDC / 5 slots / 50 floor   (full book, no volume split)
+  #   pnl_race — split-book $800: P&L $320 USDC / 2 slots (this desk) + volume $480
+  #              (Binance FDUSD-USDT, fallback USD1-USDT). Patient momentum gate,
+  #              no timer rotates. Per-pool SL 3% + trail; sleeve stop $90 USDC.
   #
-  # Switch with `python agents/jev/set_mode.py prod`, which rewrites this key AND
-  # the coupled values below in one go, then restart the desk. Editing `mode`
-  # alone would leave those values behind. $JEV_MODE overrides the file per
-  # process, for an organizer who would rather pin a profile from the env.
-  mode: prod
-  total_amount_quote: 800
+  # Switch with `python agents/jev/set_mode.py pnl_race` then restart the desk.
+  mode: pnl_race
+  total_amount_quote: 320
   quote_asset: USDC
   # Pinned so the dashboard's Start dialog seeds the right server. Left blank it
   # resolved to a nonexistent "local" and the loop could not reach the venue.
@@ -39,33 +38,44 @@ default_config:
   # UI-started loop print its intended orders and never place them.
   dry_run_writes: false
   # Model sizing (JEV Score -> % of book). Overridden live by jev_size.
-  portfolio_pct_max: 0.20
+  portfolio_pct_max: 0.50
   major_pct_min: 0.30
   major_pct_max: 0.45
   minor_pct_max: 0.20
   trust_noul_floor: 0.30
-  select_conf_floor: 0.55
-  worth_margin: 1.2
+  select_conf_floor: 0.60
+  worth_margin: 1.35
   # Portfolio / discovery. These track the run mode above — test: 2 slots /
   # 12.0 floor / 0.50 cap; prod: 5 slots / 100.0 floor / 0.20 cap.
-  max_open_executors: 5
-  min_position_usd: 50.0
-  max_new_slots: 2
+  max_open_executors: 2
+  min_position_usd: 40.0
+  max_new_slots: 1
   enrich_top_k: 12
-  scan_tabs: ["top", "trending", "new", "rwa"]
+  scan_tabs: ["top", "trending", "rwa"]
   per_tab: 25
   min_tvl: 20000
   min_vol: 5000
   max_bin_step: 400
   risk_limits:
-    max_position_size_quote: 800
-    max_open_executors: 5
-    max_drawdown_pct: 15
+    max_position_size_quote: 320
+    max_open_executors: 2
+    max_drawdown_pct: 28
+    pnl_stop_loss_usd: 90
     max_leverage: 1
     require_triple_barrier: false
     require_trailing_stop: false
     min_wallet_sol_reserve: 0.40
-default_trading_context: 'Trade Meteora DLMM on solana-mainnet-beta. Quote is USDC. JEV ranks the live universe across tabs, selects a portfolio of 3-5 pools, and sizes each from risk/market data. One-sided BUY wall under price, re-site to SELL-only after fill. Dry-run until jev.live=yes.'
+  volume_arm_usd: 480
+  pnl_arm_usd: 320
+  race_envelope_usd: 800
+  volume_controller: jev_quote_gate
+  volume_pair: FDUSD-USDT
+  volume_pair_fallback: USD1-USDT
+  require_momentum_pct: 3.0
+  stop_loss_pct: 0.03
+  trail_activation_pct: 0.025
+  trail_delta_pct: 0.015
+default_trading_context: 'Trade Meteora DLMM on solana-mainnet-beta (P&L arm $320 USDC). Quote USDC only. pnl_race: 2 slots, momentum>=3%, conf>=0.60, per-pool SL 3% + trail; sleeve stop $90 USDC NAV. Volume arm $480 is jev_quote_gate on Binance FDUSD-USDT (fallback USD1-USDT) — not this loop. Place walls when jev.live=yes, SOL reserve>=0.4, free USDC funds the floor. Live only when jev.live=yes.'
 created_by: 0
 created_at: '2026-09-19T00:00:00+00:00'
 ---
@@ -79,7 +89,18 @@ Venue is **Meteora DLMM**. Network is `solana-mainnet-beta`.
 `lp_provider` is `meteora/clmm`. `swap_provider` is `jupiter/router`.
 Quote is **USDC**. Do not invent another house.
 
-Goal in the 48h race: **grow the book while producing real volume** — the judges score Volume + P&L, and fee income alone does not register as volume unless positions actually open and close. A portfolio that sits unchanged collecting fees is good P&L and bad volume — both axes matter, so idle slots and stale positions are a competitive cost, not just a missed opportunity.
+Goal in the 48h race (**pnl_race**): **grow the Meteora P&L sleeve ($320 USDC)** while the **volume arm ($480) runs on Binance FDUSD-USDT** (`jev_quote_gate`, auto-fallback **USD1-USDT** if FDUSD is unusable). This loop does **not** churn for tape. Wait for momentum, open few high-quality USDC walls, hold through fee + round-trip spread, and exit on per-pool SL/trail, **sleeve stop $90 USDC**, rug, or a completed SELL — not on a clock.
+
+## Split-book capital ($800)
+
+| Arm | USD | Venue | Component |
+|---|---|---|---|
+| **Volume** | **$480 (60%)** | Binance spot FDUSD-USDT → USD1-USDT | `jev_quote_gate` |
+| **P&L** | **$320 (40%)** | Meteora DLMM (USDC quote) | this loop |
+| **P&L stop** | **$90 USDC** | Meteora sleeve NAV | `portfolio_stop_usd` / `pnl_stop_loss_usd` |
+| **Total** | **$800** | two venues | — |
+
+Do not put $800 on Meteora. Do not size walls in USDT while the wallet holds USDC.
 
 ## Portfolio, model-selected
 
@@ -105,10 +126,11 @@ deep book → larger, wider. Thin hot book → smaller, tighter. Confidence low 
 The book, the slot budget and the per-position floor all come from the active run
 mode (`_jev_math.MODE_PROFILES`), which the `mode:` key above selects:
 
-| mode | book | slots | min slice | per-pool cap |
-|---|---|---|---|---|
-| `test` | 100 USDC | 2 | 12.0 | 0.50 |
-| `prod` | 800 USDC | 5 | 100.0 | 0.20 |
+| mode | book (this desk) | slots | min slice | per-pool cap | volume arm | notes |
+|---|---|---|---|---|---|---|
+| `test` | 100 USDC | 2 | 12.0 | 0.50 | — | organizer tests |
+| `prod` | 800 USDC | 5 | 50.0 | 0.20 | — | full book, no split |
+| `pnl_race` | **320 USDC** | **2** | **45.0** | **0.50** | **480 USDC** (Binance USD1 desk) | split-book competition |
 
 The per-pool cap is derived so the portfolio can never oversubscribe the wallet:
 
@@ -323,6 +345,8 @@ tier, a `pct` of 0, or a `pool_usd` under `min_position_usd` stops an open —
 a rug red or the dynamic fee floor still SIT the pool on their own. Journal pct,
 width, open_cost, expected_fee, tier.
 
+**Momentum required to open (pnl_race).** `require_momentum_pct` default **3**: if 24h momentum is below that (or 6h ≤ -5%), `jev_size` returns pct=0 — wait for the move. Pass `momentum_pct` / `momentum_short_pct` from scout every size call.
+
 **Trend allowance (the deep-book case).** JEV's position is a one-sided **BID
 wall under price**, so its income is not fees alone: when the wall fills it buys
 base at a discount, and the re-sited ask sells that base back higher. `jev_size`
@@ -463,48 +487,71 @@ differ only in whether we reuse the position account.
 
 Never `keep_position=false` on a wall just to "reset." That is tear-down.
 
-## Portfolio refresh (volume + staying invested)
+## Split-book capital (pnl_race)
 
-A portfolio slot that sits WAIT/TAKE unchanged for hours is good for P&L (fees
-still accrue) but registers no open/close event — bad for volume. Solana gas +
-rent for a REBUILD round-trip is fixed by the network, not by position size
-(observed live: ~$0.19 total for a $5 position's full open+close) — at
-portfolio scale ($50–100+/pool) that fixed cost is a rounding error, not a
-reason to hold forever.
+| Arm | Venue | Capital | Job |
+|---|---|---|---|
+| **P&L (this desk)** | Meteora DLMM | **$320** (40%) | Patient one-sided walls; fee + round-trip spread |
+| **Volume** | Binance USD1 stable desk (`jev_quote_gate`) | **$480** (60%) | Race volume only — separate account/controller |
 
-Every 2 hours (24 ticks at the 300s frequency), re-check each open portfolio
-slot against the current `jev_rank` snapshot:
+Do not fund the volume desk from the Meteora wallet or vice versa. `book_usd` /
+`total_amount_quote` on this loop are the **P&L sleeve only**.
 
-- If a distinct-base candidate outside the held portfolio now scores **≥ 10
-  points higher composite** than the held slot scored at entry, and the held
-  slot is not currently **TAKE** (a live filled edge — never abandon a working
-  fill to chase a score), REBUILD out of the stale slot into the stronger
-  candidate next tick.
-- Do not rotate a slot less than 2 hours old, even if a better candidate
-  already exists — this is a staleness check, not a chase-every-tick rule.
-- Do not rotate more than one portfolio slot per tick.
-- Journal every rotation with `decision=REBUILD_ROTATE` and the composite
-  delta that triggered it.
+## Portfolio refresh (patient — score-chase OFF in pnl_race)
 
-Same reasoning as the minor-pool leash's age-based KILL below, applied to the
-portfolio slots: real turnover, cost-justified by the fixed gas bill against a
-$50–100+ position — not churn for its own sake.
+When `portfolio_rotate_hours` is **0** (pnl_race default): **do not** rotate a
+held slot just because another candidate scored higher. Hold through fee income
+and the SELL wall. Volume is the other arm's job.
 
-## Minor-pool leash
+If a future mode sets `portfolio_rotate_hours` > 0, only then: every N hours,
+re-check rank and REBUILD into a candidate ≥10 composite points stronger, never
+abandoning a live TAKE fill, at most one rotate per tick, journal
+`decision=REBUILD_ROTATE`.
 
-Enter only if `jev_select` cleared `select_conf_floor` AND the rug card is clean.
+Still always exit for **risk** (below), rug, or dead route — those are not churn.
+
+## Stop-loss and trailing stop (filled inventory)
+
+LP executors have no native triple barrier. The tick **must** mark-to-market:
+
+1. On open / BUY fill, journal and remember `entry_price = P` and `peak_price = P`
+   (memory key e.g. `jev.peak.<pool>` or the session journal).
+2. Every tick while holding base (FILLED_BUY or SELL wall), pass to `jev_gate`:
+   `entry_price`, `peak_price`, `price=P`, barriers on.
+3. Update `peak_price = max(peak_price, P)` each tick.
+4. If gate RISK action is **`KILL_SL`** or **`KILL_TRAIL`**:
+   `stop_executor(..., keep_position=False)` (or equivalent full close) **this
+   tick** — do not leave a bleeding wall. Journal `decision=KILL_SL|KILL_TRAIL`.
+
+Defaults in pnl_race (from mode profile):
+
+| Barrier | Value | Meaning |
+|---|---|---|
+| Stop loss | **3%** | `(P - entry)/entry <= -3%` → close |
+| Trail activation | **+2.5%** | arm once peak pnl ≥ 2.5% |
+| Trail delta | **1.5%** | from peak price, give-back ≥ 1.5% → close |
+
+Unfilled BUY walls are **not** SL'd for sitting (price must come to the wall).
+If momentum flips hard down before fill, prefer SIT on new size next tick via
+the momentum gate rather than chasing.
+
+## Position leash (no timer kill in pnl_race)
+
+Enter only if `jev_select` cleared `select_conf_floor` AND the rug card is clean
+AND `jev_size` cleared momentum + worth tier.
 
 Exit on the **first** of:
 
 | Trigger | Action |
 |---|---|
-| Rug noul drops below `trust_noul_floor` | SIT / KILL |
-| Age ≥ 3600s | KILL |
-| A flag appears after entry | KILL |
-| Runner into the SELL wall | Bank. LEARN what worked. |
-| Dead tape / no Jupiter route | KILL |
+| RISK `KILL_SL` / `KILL_TRAIL` | Close inventory immediately |
+| Rug noul drops below `trust_noul_floor` | Close / SIT |
+| A flag appears after entry | Close |
+| Runner fills the SELL wall | Bank. LEARN what worked. |
+| Dead tape / no Jupiter route | Close |
+| Age timer | **Off** in pnl_race (`minor_max_sec=0`) |
 
-The major pool is a different id. Do not mix them.
+Do not mix pool ids. Do not force-close a healthy fee-accruing wall for volume.
 
 ## Do not
 
@@ -523,3 +570,14 @@ The major pool is a different id. Do not mix them.
 - Do not retry a FAILED executor blindly — journal and SIT.
 - Do not invent a bin price the gate did not print.
 
+
+## Order placement checklist (do not permanent-SIT)
+
+1. Human sets memory `jev.live=yes` (agent never self-writes it).
+2. `dry_run_writes: false` for live; SOL free ≥ `min_wallet_sol_reserve` (0.40).
+3. Quote mint **USDC** matches wallet USDC (not USDT walls on a USDC book).
+4. `jev_select` / `jev_size` use **effective_min_position_usd** so a tight free
+   book still opens one slot ≥ $20 rather than SIT forever under a stale floor.
+5. Momentum gate is **3%** in pnl_race (patient, not paralyzed).
+6. On `KILL_PORTFOLIO` ($90 sleeve loss) or `KILL_SL` / `KILL_TRAIL`: `stop_executor` same tick.
+7. Volume is **out of band** — never open Meteora walls to manufacture turnover.

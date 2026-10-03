@@ -1,5 +1,15 @@
 # JEV — Decision Maker at Meteora (agent)
 
+**Builders Cup split-book ($800):**
+
+| Arm | Amount | Venue | Notes |
+|---|---|---|---|
+| Volume | **$480 (60%)** | Binance **FDUSD-USDT** (fallback **USD1-USDT**) | `controllers/generic/jev_quote_gate.py` |
+| P&L | **$320 (40%)** | Meteora DLMM, USDC quote | this agent / `loops/jev_desk` |
+| P&L stop | **$90 USDC** | Meteora sleeve NAV | absolute, not 10%-of-800 |
+
+Mode switch: `python agents/jev/set_mode.py pnl_race` then restart.
+
 Condor agent. JEV (TypeSafe System One) ranks the live Meteora DLMM universe
 across Top / Trending / New / RWA, enriches top names with live eight-flag rug
 cards, and holds a portfolio of 3–5 pools sized from risk/market data.

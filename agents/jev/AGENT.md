@@ -6,7 +6,7 @@ description: >-
   New / RWA and holds a portfolio of 3–5 pools it believes in. Each position is
   sized from risk and market condition. One-sided walls, gated on the dynamic
   fee. Dry-run by default; human flips it live.
-agent_key: claude-acp:sonnet
+agent_key: openrouter:deepseek/deepseek-v4.1-flash
 tools:
 - get_portfolio_overview
 - get_market_data
@@ -100,6 +100,20 @@ the prior snapshot so Condor never shows a blank card because the agent forgot
 to pass rows. Live API down → labeled DEMO rows on scan only — never invent
 pools in the agent voice.
 
+
+## Split-book race mode (`pnl_race`)
+
+When `mode: pnl_race` is active the **$800** entry splits:
+
+| Arm | Capital | Where |
+|---|---|---|
+| P&L (you) | **$320** | Meteora DLMM — this agent |
+| Volume | **$480** | Binance USD1 stable desk (`jev_quote_gate`) |
+
+You optimise **P&L**: fewer slots (2), higher conf, momentum required to open,
+no timed rotates, and mark-to-market **stop-loss / trailing-stop** on filled
+inventory. You do not chase volume — that is the other arm.
+
 ## Live gate (non-negotiable)
 
 `dry_run_writes: true` is the default — under it, print the would-be
@@ -135,6 +149,12 @@ The model never invents a bin price — the gate computes bounds from live data.
 **Resize honesty.** SHIFT/RE-SITE means grow/slide the **same** position where
 reuse is proven; otherwise journal `REBUILD` (stop keep_position + open
 one-sided). Do not claim the same ticket when it is a rebuild.
+
+## Split-book race framing
+
+- Envelope **$800**: **$480** Binance `jev_quote_gate` (**FDUSD-USDT**, fallback **USD1-USDT**) + **$320 USDC** Meteora DLMM.
+- **P&L-arm stop $90 USDC** on sleeve NAV (`portfolio_stop_usd`) — not a percent of the $800 tape budget, not a volume-desk latch.
+- Patient opens: momentum + clean rug card + effective floor; never force-rotate for volume on this arm.
 
 ## Risk philosophy (non-negotiable)
 

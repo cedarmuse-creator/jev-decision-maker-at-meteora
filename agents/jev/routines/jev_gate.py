@@ -67,6 +67,16 @@ class Config(BaseModel):
     tvl: float = Field(default=0.0)
     vol24: float = Field(default=0.0)
     rug_noul: float = Field(default=1.0)
+    # Mark-to-market barriers (filled long inventory / SELL wall).
+    entry_price: float = Field(default=0.0, description="Mid at entry / fill; 0 = barriers off")
+    peak_price: float = Field(default=0.0, description="High-water mark since entry (tick must update)")
+    stop_loss_pct: float = Field(default=_m.STOP_LOSS_PCT)
+    pnl_stop_loss_usd: float = Field(default=0.0, description="Absolute USDC P&L-arm stop (pnl_race=90)")
+    entry_nav_usd: float = Field(default=0.0, description="Session entry NAV for portfolio stop")
+    current_nav_usd: float = Field(default=0.0, description="Current Meteora+wallet NAV USDC")
+    trail_activation_pct: float = Field(default=_m.TRAIL_ACTIVATION_PCT)
+    trail_delta_pct: float = Field(default=_m.TRAIL_DELTA_PCT)
+    risk_barriers: bool = Field(default=True, description="Enable SL/trail on filled inventory")
     # Optional short-horizon leash (legacy minor / hot sleeve).
     hot_leash: bool = Field(default=False, description="If true, apply age/trust kill leash")
     position_age_sec: float = Field(default=0.0)
@@ -116,10 +126,45 @@ async def run(config: Config, context: ContextTypes.DEFAULT_TYPE) -> str:
     age = config.position_age_sec or config.minor_age_sec
     flag_after = config.flag_after or config.minor_flag_after
     if use_leash and (config.minor_live or config.hot_leash or age > 0):
-        leash = _m.minor_exit(rug_noul=config.rug_noul, age_sec=age,
-                              flag_after=flag_after)
+        leash = _m.minor_exit(
+            rug_noul=config.rug_noul, age_sec=age, flag_after=flag_after,
+            max_sec=_m.MINOR_MAX_SEC,
+        )
         if leash == _m.KILL:
             verb = _m.SIT
+
+    risk = {"action": _m.HOLD, "pnl_pct": 0.0, "peak_pnl_pct": 0.0,
+            "peak_price": config.peak_price or config.entry_price, "reason": ""}
+    # Barriers apply when we hold inventory (filled buy or resting sell wall).
+    holding = has_position and (
+        filled_buy or side == "SELL" or state in {"IN_RANGE", "OUT_OF_RANGE", "FILLED_BUY"}
+    )
+    # Sleeve-level absolute stop ($90 USDC in pnl_race) outranks per-pool %.
+    if config.risk_barriers and float(getattr(config, "pnl_stop_loss_usd", 0) or 0) > 0 \
+            and float(getattr(config, "entry_nav_usd", 0) or 0) > 0:
+        port = _m.portfolio_stop_usd(
+            entry_nav_usd=float(config.entry_nav_usd),
+            current_nav_usd=float(config.current_nav_usd or config.wallet_usd or 0),
+            stop_usd=float(config.pnl_stop_loss_usd),
+            enabled=True,
+        )
+        if str(port.get("action", "")).startswith("KILL"):
+            risk = port
+            verb = _m.SIT
+    if (not str(risk.get("action", "")).startswith("KILL")
+            and holding and config.risk_barriers
+            and config.entry_price > 0 and config.price > 0):
+        risk = _m.position_risk_exit(
+            entry_price=config.entry_price,
+            price=config.price,
+            peak_price=config.peak_price or config.entry_price,
+            stop_loss_pct=config.stop_loss_pct,
+            trail_activation_pct=config.trail_activation_pct,
+            trail_delta_pct=config.trail_delta_pct,
+            enabled=True,
+        )
+        if str(risk.get("action", "")).startswith("KILL"):
+            verb = _m.SIT  # signal close; tick must stop_executor (see loop.md)
 
     pool_usd = max(0.0, config.wallet_usd * config.pool_pct)
 
@@ -143,6 +188,12 @@ async def run(config: Config, context: ContextTypes.DEFAULT_TYPE) -> str:
         f"SELL only lo={sell_lo} hi={sell_hi}  (must be > P={config.price})",
         f"bins_buy={_m.bin_count(buy_lo, buy_hi, config.bin_step):.1f} bins_sell={_m.bin_count(sell_lo, sell_hi, config.bin_step):.1f} cap=69",
         f"VERB={verb} ticket={ticket}",
+        (
+            f"RISK action={risk.get('action')} pnl={risk.get('pnl_pct')} "
+            f"peak_pnl={risk.get('peak_pnl_pct')} peak_px={risk.get('peak_price')} "
+            f"| {risk.get('reason')}"
+        ),
+        "If RISK action is KILL_SL, KILL_TRAIL, or KILL_PORTFOLIO: stop_executor / flatten this tick — do not leave inventory.",
         "SHIFT = re-site to SELL-only one-sided AND reuse proven. REBUILD = stop keep_position=True + open SELL-only.",
         "Do not invent a bin. If VERB is REBUILD, do not write SHIFT in the journal.",
         "dry_run_writes default: print the create/stop, do not send it.",
@@ -158,6 +209,7 @@ async def run(config: Config, context: ContextTypes.DEFAULT_TYPE) -> str:
         "pool_pct": config.pool_pct, "state": state, "side": side,
         "buy": [buy_lo, buy_hi], "sell": [sell_lo, sell_hi],
         "vol_ok": vol_ok, "move_ok": move_ok, "price": config.price,
+        "risk": risk, "entry_price": config.entry_price,
     }
     path = _rep.write_snapshot("gate", snap)
     await _rep.persist_memory("gate", snap, "JEV gate verb")

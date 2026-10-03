@@ -1,5 +1,7 @@
 # JEV — Decision Maker at Meteora
 
+> **Cup capital ($800):** Binance volume **$480** on **FDUSD-USDT** (fallback **USD1-USDT**) · Meteora P&L **$320 USDC** · **P&L-arm stop $90 USDC**. Details in `agents/jev/ORGANIZER_CAPITAL.md`.
+
 ![JEV — Decision Maker at Meteora](JEV-01.png)
 
 A Condor trading agent where **one structured-decision model** ranks the live
